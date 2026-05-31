@@ -10,9 +10,9 @@ The sponsor SDKs are NOT reliably in Claude's training data. Before writing inte
 - Render — hosting.               Docs: 
 
 ## Also used
-- GitHub API (Octokit).  Docs: 
+- GitHub API (Octokit).  Docs: https://docs.github.com/en/rest/issues/comments (create issue comment: POST /repos/{owner}/{repo}/issues/{issue_number}/comments, works on PRs, returns html_url) · https://octokit.github.io/rest.js/
 - Anthropic API (Claude). Docs: 
-- Slack API.             Docs: 
+- Slack API.             Docs: https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks (incoming webhook: POST application/json {"text":"..."} → HTTP 200 body "ok"; Block Kit via "blocks" array with "text" as fallback)
 
 ## Bonus (pitch-only unless core loop done)
 Opsera, NEAR AI, Brain2, Apify, Rtrvr.ai, Nebius, Lightsprint.ai
