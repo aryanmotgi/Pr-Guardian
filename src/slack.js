@@ -11,9 +11,10 @@ const WEBHOOK_ENV = "SLACK_WEBHOOK_URL";
 
 // Test seam: swap the fetch implementation so tests can assert the payload
 // without hitting the network. Pass null to restore the real global fetch.
-let _fetch = (...args) => fetch(...args);
-export function _setFetch(fn) {
-  _fetch = fn || ((...args) => fetch(...args));
+/** @type {typeof fetch} */
+let _fetch = (url, opts) => fetch(url, opts);
+export function _setFetch(/** @type {typeof fetch | null} */ fn) {
+	_fetch = fn ?? ((url, opts) => fetch(url, opts));
 }
 
 // Low-level primitive every Slack message goes through. Reuses the shared
@@ -21,34 +22,36 @@ export function _setFetch(fn) {
 // LOUDLY if the webhook URL is missing rather than dropping the message.
 // `blocks` is optional Block Kit; `text` is always sent as the fallback.
 export async function sendSlack(text, blocks) {
-  if (config.dryRun) {
-    console.log("📣 [dry-run] slack.send → (would POST to SLACK_WEBHOOK_URL)");
-    console.log(indent(text));
-    if (blocks) console.log(indent("blocks: " + JSON.stringify(blocks)));
-    return { dryRun: true };
-  }
+	if (config.dryRun) {
+		console.log("📣 [dry-run] slack.send → (would POST to SLACK_WEBHOOK_URL)");
+		console.log(indent(text));
+		if (blocks) console.log(indent(`blocks: ${JSON.stringify(blocks)}`));
+		return { dryRun: true };
+	}
 
-  const url = process.env[WEBHOOK_ENV];
-  if (!url) {
-    throw new Error(
-      `${WEBHOOK_ENV} is not set — cannot send the Slack ping. Set it in your env ` +
-        `(do not commit it), or run in dry-run (unset DRY_RUN).`
-    );
-  }
+	const url = process.env[WEBHOOK_ENV];
+	if (!url) {
+		throw new Error(
+			`${WEBHOOK_ENV} is not set — cannot send the Slack ping. Set it in your env ` +
+				`(do not commit it), or run in dry-run (unset DRY_RUN).`,
+		);
+	}
 
-  const payload = blocks ? { text, blocks } : { text };
-  const res = await _fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+	const payload = blocks ? { text, blocks } : { text };
+	const res = await _fetch(url, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
+	});
 
-  // A Slack incoming webhook returns HTTP 200 with the body "ok" on success.
-  const body = (await res.text()).trim();
-  if (!res.ok || body !== "ok") {
-    throw new Error(`Slack webhook rejected the message: HTTP ${res.status} "${body}"`);
-  }
-  return { ok: true, status: res.status };
+	// A Slack incoming webhook returns HTTP 200 with the body "ok" on success.
+	const body = (await res.text()).trim();
+	if (!res.ok || body !== "ok") {
+		throw new Error(
+			`Slack webhook rejected the message: HTTP ${res.status} "${body}"`,
+		);
+	}
+	return { ok: true, status: res.status };
 }
 
 // Public API — announce an outcome to the channel.
@@ -60,117 +63,142 @@ export async function sendSlack(text, blocks) {
 //   allow    → a quiet, no-alert line (no @-mention, no button)
 //   escalate → a warning alert that @-mentions a human and names the rule
 // The plain one-liner is always sent as `text` — Slack's required fallback.
+/**
+ * @param {{ summary?: string, prUrl?: string, outcome?: string, testsPassed?: number, testsTotal?: number, mention?: string, rule?: string, severity?: string }} [opts]
+ */
 export async function notifySlack({
-  summary,
-  prUrl,
-  outcome = "fix",
-  testsPassed,
-  testsTotal,
-  mention,
-  rule,
-  severity,
+	summary,
+	prUrl,
+	outcome = "fix",
+	testsPassed,
+	testsTotal,
+	mention,
+	rule,
+	severity,
 } = {}) {
-  if (!summary || !prUrl) {
-    throw new Error("notifySlack requires { summary, prUrl }");
-  }
+	if (!summary || !prUrl) {
+		throw new Error("notifySlack requires { summary, prUrl }");
+	}
 
-  if (outcome === "escalate") {
-    const sev = severityLabel(severity);
-    const text = `${mention ? mention + " " : ""}⚠️ ${sev ? sev + " · " : ""}Needs human review — caught a violation I couldn't auto-fix safely: ${summary} ${prUrl}`;
-    return sendSlack(text, buildEscalateBlocks({ summary, prUrl, mention, rule, sev }));
-  }
+	if (outcome === "escalate") {
+		const sev = severityLabel(severity);
+		const text = `${mention ? `${mention} ` : ""}⚠️ ${sev ? `${sev} · ` : ""}Needs human review — caught a violation I couldn't auto-fix safely: ${summary} ${prUrl}`;
+		return sendSlack(
+			text,
+			buildEscalateBlocks({ summary, prUrl, mention, rule, sev }),
+		);
+	}
 
-  if (outcome === "allow") {
-    const text = `✅ Reviewed — compliant, no action needed: ${summary} ${prUrl}`;
-    return sendSlack(text, buildAllowBlocks({ summary, prUrl }));
-  }
+	if (outcome === "allow") {
+		const text = `✅ Reviewed — compliant, no action needed: ${summary} ${prUrl}`;
+		return sendSlack(text, buildAllowBlocks({ summary, prUrl }));
+	}
 
-  // outcome === "fix" (default) — unchanged
-  const text = `✅ Auto-fixed & merged: ${summary} ${prUrl}`;
-  return sendSlack(text, buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal }));
+	// outcome === "fix" (default) — unchanged
+	const text = `✅ Auto-fixed & merged: ${summary} ${prUrl}`;
+	return sendSlack(
+		text,
+		buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal }),
+	);
 }
 
 // Severity badge for escalations, so a human can triage at a glance.
 const SEVERITY = { high: "🔴 HIGH", medium: "🟠 MEDIUM", low: "🟡 LOW" };
 function severityLabel(severity) {
-  return SEVERITY[String(severity || "").toLowerCase()] || null;
+	return SEVERITY[String(severity || "").toLowerCase()] || null;
 }
 
 // ESCALATE — a warning alert. The @-mention lives in both the fallback text and
 // the section so Slack actually notifies the human; the button is red (danger).
 function buildEscalateBlocks({ summary, prUrl, mention, rule, sev }) {
-  const heading = `⚠️ *Needs human review — couldn't auto-fix safely*${sev ? `  ·  ${sev}` : ""}`;
-  const section = [heading, summary];
-  if (mention) section.push(`${mention} — please take a look.`);
+	const heading = `⚠️ *Needs human review — couldn't auto-fix safely*${sev ? `  ·  ${sev}` : ""}`;
+	const section = [heading, summary];
+	if (mention) section.push(`${mention} — please take a look.`);
 
-  const blocks = [{ type: "section", text: { type: "mrkdwn", text: section.join("\n") } }];
-  if (rule) {
-    blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `*Rule violated:* ${rule}` }] });
-  }
-  blocks.push({
-    type: "actions",
-    elements: [
-      {
-        type: "button",
-        text: { type: "plain_text", text: "Review PR" },
-        url: prUrl,
-        action_id: "review_pr",
-        style: "danger",
-      },
-    ],
-  });
-  return blocks;
+	/** @type {any[]} */
+	const blocks = [
+		{ type: "section", text: { type: "mrkdwn", text: section.join("\n") } },
+	];
+	if (rule) {
+		blocks.push({
+			type: "context",
+			elements: [{ type: "mrkdwn", text: `*Rule violated:* ${rule}` }],
+		});
+	}
+	blocks.push({
+		type: "actions",
+		elements: [
+			{
+				type: "button",
+				text: { type: "plain_text", text: "Review PR" },
+				url: prUrl,
+				action_id: "review_pr",
+				style: "danger",
+			},
+		],
+	});
+	return blocks;
 }
 
 // ALLOW — a single quiet context line. No @-mention, no button, no alarm.
 function buildAllowBlocks({ summary, prUrl }) {
-  return [
-    {
-      type: "context",
-      elements: [
-        { type: "mrkdwn", text: `✅ Reviewed — compliant, no action needed · ${summary} · <${prUrl}|PR>` },
-      ],
-    },
-  ];
+	return [
+		{
+			type: "context",
+			elements: [
+				{
+					type: "mrkdwn",
+					text: `✅ Reviewed — compliant, no action needed · ${summary} · <${prUrl}|PR>`,
+				},
+			],
+		},
+	];
 }
 
 function buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal }) {
-  const blocks = [
-    { type: "section", text: { type: "mrkdwn", text: `✅ *Auto-fixed & merged*\n${summary}` } },
-  ];
+	/** @type {any[]} */
+	const blocks = [
+		{
+			type: "section",
+			text: { type: "mrkdwn", text: `✅ *Auto-fixed & merged*\n${summary}` },
+		},
+	];
 
-  if (typeof testsTotal === "number") {
-    const passed = typeof testsPassed === "number" ? testsPassed : testsTotal;
-    blocks.push({
-      type: "context",
-      elements: [
-        { type: "mrkdwn", text: `🧪 ${passed}/${testsTotal} tests passed · verified in an isolated sandbox` },
-      ],
-    });
-  }
+	if (typeof testsTotal === "number") {
+		const passed = typeof testsPassed === "number" ? testsPassed : testsTotal;
+		blocks.push({
+			type: "context",
+			elements: [
+				{
+					type: "mrkdwn",
+					text: `🧪 ${passed}/${testsTotal} tests passed · verified in an isolated sandbox`,
+				},
+			],
+		});
+	}
 
-  // A url button opens the PR in the browser. Per Slack docs, url buttons still
-  // emit an interaction payload, but with an incoming webhook (no interactivity
-  // endpoint) the link opens fine — we simply don't ack it.
-  blocks.push({
-    type: "actions",
-    elements: [
-      {
-        type: "button",
-        text: { type: "plain_text", text: "View PR" },
-        url: prUrl,
-        action_id: "view_pr",
-        style: "primary",
-      },
-    ],
-  });
+	// A url button opens the PR in the browser. Per Slack docs, url buttons still
+	// emit an interaction payload, but with an incoming webhook (no interactivity
+	// endpoint) the link opens fine — we simply don't ack it.
+	blocks.push({
+		type: "actions",
+		elements: [
+			{
+				type: "button",
+				text: { type: "plain_text", text: "View PR" },
+				url: prUrl,
+				action_id: "view_pr",
+				style: "primary",
+			},
+		],
+	});
 
-  return blocks;
+	return blocks;
 }
 
 function indent(text) {
-  return text
-    .split("\n")
-    .map((l) => "   │ " + l)
-    .join("\n");
+	return text
+		.split("\n")
+		.map((l) => `   │ ${l}`)
+		.join("\n");
 }

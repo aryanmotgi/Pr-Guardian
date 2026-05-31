@@ -1,21 +1,21 @@
 {
-  "name": "pr-guardian-trigger",
-  "version": "1.0.0",
-  "description": "Webhook receiver and judgment engine for PR Guardian",
-  "main": "src/index.js",
-  "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js",
-    "test": "node --test tests/"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
-    "@insforge/sdk": "latest",
-    "@octokit/rest": "^21.0.0",
-    "dotenv": "^16.4.0",
-    "express": "^4.19.0"
-  }
+	"name": "pr-guardian-trigger",
+	"version": "1.0.0",
+	"description": "Webhook receiver and judgment engine for PR Guardian",
+	"main": "src/index.js",
+	"scripts": {
+		"start": "node src/index.js",
+		"dev": "node --watch src/index.js",
+		"test": "node --test tests/"
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"dependencies": {
+		"@anthropic-ai/sdk": "^0.39.0",
+		"@insforge/sdk": "latest",
+		"@octokit/rest": "^21.0.0",
+		"dotenv": "^16.4.0",
+		"express": "^4.19.0"
+	}
 }

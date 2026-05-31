@@ -9,6 +9,8 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
     "sandbox:test": "node scripts/sandbox-test.js",
     "fix:engine": "node scripts/fix-engine.js",
     "start": "node scripts/server.js",
@@ -34,12 +36,17 @@
   "homepage": "https://github.com/aryanmotgi/Pr-Guardian#readme",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
-    "@insforge/sdk": "latest",
     "@aws-sdk/client-s3": "^3.1057.0",
     "@daytona/sdk": "^0.183.0",
+    "@insforge/sdk": "latest",
     "@octokit/rest": "^21.1.1",
     "@slack/web-api": "^7.9.1",
     "dotenv": "^17.4.2",
     "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
+    "knip": "^6.15.0",
+    "typescript": "^6.0.3"
   }
 }
