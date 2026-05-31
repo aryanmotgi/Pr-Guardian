@@ -1,14 +1,12 @@
 const Anthropic = require('@anthropic-ai/sdk');
+const { getRules } = require('./insforge');
 
 const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const RULES = `
-1. Never log or print full payment card numbers (PANs) in application code.
-2. Never log other sensitive PII (full SSNs, passwords, full card data) in app code.
-3. No hardcoded secrets or API keys committed in source.
-`.trim();
-
 async function judge(diff) {
+  const ruleDescriptions = await getRules();
+  const RULES = ruleDescriptions.map((r, i) => `${i + 1}. ${r}`).join('\n');
+
   const diffText = diff.files
     .map(f => `--- ${f.filename} ---\n${f.patch}`)
     .join('\n\n');

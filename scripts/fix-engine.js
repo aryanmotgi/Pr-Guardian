@@ -3,9 +3,16 @@ const { Daytona } = require('@daytona/sdk');
 const Anthropic = require('@anthropic-ai/sdk');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 
-const REPO_URL = 'https://github.com/aryanmotgi/Pr-Guardian.git';
+const DEFAULT_REPO_URL = 'https://github.com/aryanmotgi/Pr-Guardian.git';
 const CLONE_PATH = '/tmp/pr-guardian';
-const DEMO_REPO_PATH = `${CLONE_PATH}/demo-repo`;
+const DEMO_SUBDIR = 'demo-repo';
+
+function repoUrlFor(pr) {
+  if (pr && pr.owner && pr.repo) {
+    return `https://github.com/${pr.owner}/${pr.repo}.git`;
+  }
+  return DEFAULT_REPO_URL;
+}
 
 // Tigris S3-compatible endpoint + region (from Tigris console bucket page).
 const TIGRIS_ENDPOINT = 'https://t3.storage.dev';
@@ -103,7 +110,7 @@ Return ONLY the corrected single line of code, with no explanation, no markdown,
   return response.content[0].text.trim();
 }
 
-async function runFixEngine(violation, { onEvent = noopEmit } = {}) {
+async function runFixEngine(violation, { onEvent = noopEmit, pr = null } = {}) {
   if (!process.env.DAYTONA_API_KEY || process.env.DAYTONA_API_KEY === 'your_api_key_here') {
     throw new Error('DAYTONA_API_KEY not set in .env');
   }
@@ -122,16 +129,28 @@ async function runFixEngine(violation, { onEvent = noopEmit } = {}) {
     console.log(`Sandbox created: ${sandbox.id}`);
     onEvent({ event: 'sandbox_create', status: 'ready', sandbox_id: sandbox.id });
 
-    console.log(`Cloning ${REPO_URL}...`);
-    onEvent({ event: 'clone', status: 'starting', repo: REPO_URL });
-    const clone = await sandbox.process.executeCommand(`git clone ${REPO_URL} ${CLONE_PATH}`);
+    const repoUrl = repoUrlFor(pr);
+    console.log(`Cloning ${repoUrl}...`);
+    onEvent({ event: 'clone', status: 'starting', repo: repoUrl });
+    const clone = await sandbox.process.executeCommand(`git clone ${repoUrl} ${CLONE_PATH}`);
     if (clone.exitCode !== 0) throw new Error(`git clone failed: ${clone.result}`);
     console.log('Clone complete.');
     onEvent({ event: 'clone', status: 'done' });
 
+    // Project path: if the clone has a `demo-repo/` subdir (legacy layout used
+    // by aryanmotgi/Pr-Guardian), use that; otherwise the clone root is the
+    // project itself. Detect via `test -d`.
+    const subdirCheck = await sandbox.process.executeCommand(
+      `test -d ${CLONE_PATH}/${DEMO_SUBDIR} && echo nested || echo flat`
+    );
+    const projectPath = subdirCheck.result.trim().endsWith('nested')
+      ? `${CLONE_PATH}/${DEMO_SUBDIR}`
+      : CLONE_PATH;
+    console.log(`Project path: ${projectPath}`);
+
     console.log('Running npm install...');
     onEvent({ event: 'install', status: 'starting' });
-    const install = await sandbox.process.executeCommand('npm install', DEMO_REPO_PATH);
+    const install = await sandbox.process.executeCommand('npm install', projectPath);
     if (install.exitCode !== 0) throw new Error(`npm install failed: ${install.result}`);
     console.log('Install complete.');
     onEvent({ event: 'install', status: 'done' });
@@ -205,7 +224,7 @@ async function runFixEngine(violation, { onEvent = noopEmit } = {}) {
       // Run tests
       console.log('Running npm test...');
       onEvent({ event: 'test', attempt, status: 'starting' });
-      const test = await sandbox.process.executeCommand('npm test', DEMO_REPO_PATH);
+      const test = await sandbox.process.executeCommand('npm test', projectPath);
 
       console.log('\n--- TEST OUTPUT ---');
       console.log(test.result);

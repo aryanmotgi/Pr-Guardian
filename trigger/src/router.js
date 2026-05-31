@@ -1,3 +1,5 @@
+const { fireViolationEvent } = require('./insforge');
+
 async function route(pr, decision) {
   const { verdict, confidence, reason, file } = decision;
 
@@ -10,6 +12,7 @@ async function route(pr, decision) {
 
   if (verdict === 'violation' && confidence === 'high') {
     console.log(`ACTION: Handing off to fix engine — PR #${pr.number} in ${file}`);
+    await fireViolationEvent(decision, pr);
     // ASSUMPTION: Insforge/Aryan's fix engine connects here
     await handoffToFixEngine(pr, decision);
   } else if (verdict === 'false-alarm') {

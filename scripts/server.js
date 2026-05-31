@@ -5,6 +5,7 @@ const { randomUUID } = require('crypto');
 
 const { runFixEngine } = require('./fix-engine');
 const { closeLoop } = require('./close-loop');
+const { createJob, updateJob } = require('./insforge');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -125,10 +126,21 @@ app.post('/fix', async (req, res) => {
     res.write(`data: ${JSON.stringify(wrapped)}\n\n`);
   };
 
+  // Create Insforge job row (status: processing). Null if Insforge not configured.
+  const insforgeJobId = await createJob({ pr, violation: mapped.violation });
+  if (insforgeJobId) emit({ event: 'insforge_job_created', insforgeJobId });
+
   emit({ event: 'job_accepted', violation, usingFallback, pr });
 
   try {
-    const result = await runFixEngine(violation, { onEvent: emit });
+    const result = await runFixEngine(violation, { onEvent: emit, pr });
+
+    const finalStatus = result.success ? 'fixed' : result.escalate ? 'escalated' : 'unknown';
+    await updateJob(insforgeJobId, {
+      status: finalStatus,
+      // ASSUMPTION: receipt stored as jsonb; stringify not needed — Insforge accepts objects
+      receipt: result.receipt || null,
+    });
 
     // Hand off to Kaushik
     emit({ event: 'close_loop', status: 'starting' });
@@ -142,12 +154,13 @@ app.post('/fix', async (req, res) => {
 
     emit({
       event: 'job_complete',
-      status: result.success ? 'fixed' : result.escalate ? 'escalated' : 'unknown',
+      status: finalStatus,
       result,
       close_loop: closeResult,
     });
   } catch (err) {
     console.error('Fix engine failed:', err);
+    await updateJob(insforgeJobId, { status: 'escalated', receipt: { error: err.message } });
     emit({ event: 'job_error', message: err.message });
   } finally {
     res.end();

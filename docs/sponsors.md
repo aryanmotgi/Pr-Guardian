@@ -5,7 +5,7 @@ The sponsor SDKs are NOT reliably in Claude's training data. Before writing inte
 ## Core (building with these)
 - Daytona — isolated sandboxes.   Docs: 
 - Kalibr — orchestration + retry. Docs: 
-- Insforge — backend/DB/auth/event. Docs: 
+- Insforge — backend/DB/auth/event. Docs: https://docs.insforge.dev/introduction · SDK: https://docs.insforge.dev/sdks/typescript · Realtime: https://docs.insforge.dev/sdks/typescript/realtime
 - Tigris — S3-compatible storage.  Docs: 
 - Render — hosting.               Docs: 
 
