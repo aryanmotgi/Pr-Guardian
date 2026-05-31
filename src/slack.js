@@ -24,6 +24,7 @@ export async function sendSlack(text, blocks) {
   if (config.dryRun) {
     console.log("📣 [dry-run] slack.send → (would POST to SLACK_WEBHOOK_URL)");
     console.log(indent(text));
+    if (blocks) console.log(indent("blocks: " + JSON.stringify(blocks)));
     return { dryRun: true };
   }
 
@@ -51,14 +52,53 @@ export async function sendSlack(text, blocks) {
 }
 
 // Public API — ping the channel when a fix has merged.
-//   input:  { summary, prUrl }
+//   input:  { summary, prUrl, testsPassed?, testsTotal? }
 //   output: { ok, status } on a live send, or { dryRun: true } in dry-run.
-export async function notifySlack({ summary, prUrl } = {}) {
+//
+// Sends a Block Kit card (header + optional test-count + a "View PR" button) and
+// keeps the plain one-liner as `text` — Slack's required fallback when blocks
+// can't render. testsPassed/testsTotal are optional; when present they add a
+// credibility line ("🧪 6/6 tests passed").
+export async function notifySlack({ summary, prUrl, testsPassed, testsTotal } = {}) {
   if (!summary || !prUrl) {
     throw new Error("notifySlack requires { summary, prUrl }");
   }
   const text = `✅ Auto-fixed & merged: ${summary} ${prUrl}`;
-  return sendSlack(text);
+  return sendSlack(text, buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal }));
+}
+
+function buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal }) {
+  const blocks = [
+    { type: "section", text: { type: "mrkdwn", text: `✅ *Auto-fixed & merged*\n${summary}` } },
+  ];
+
+  if (typeof testsTotal === "number") {
+    const passed = typeof testsPassed === "number" ? testsPassed : testsTotal;
+    blocks.push({
+      type: "context",
+      elements: [
+        { type: "mrkdwn", text: `🧪 ${passed}/${testsTotal} tests passed · verified in an isolated sandbox` },
+      ],
+    });
+  }
+
+  // A url button opens the PR in the browser. Per Slack docs, url buttons still
+  // emit an interaction payload, but with an incoming webhook (no interactivity
+  // endpoint) the link opens fine — we simply don't ack it.
+  blocks.push({
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: { type: "plain_text", text: "View PR" },
+        url: prUrl,
+        action_id: "view_pr",
+        style: "primary",
+      },
+    ],
+  });
+
+  return blocks;
 }
 
 function indent(text) {

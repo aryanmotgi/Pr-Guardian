@@ -45,6 +45,34 @@ test("notifySlack posts the one-line merged message to the webhook", async () =>
   assert.deepEqual(res, { ok: true, status: 200 });
 });
 
+test("notifySlack sends a Block Kit card with a View PR button and test count", async () => {
+  const calls = installRecorder();
+  await notifySlack({
+    summary: "Masked the PAN before logging",
+    prUrl: "https://github.com/acme/acme-payments/pull/42",
+    testsPassed: 6,
+    testsTotal: 6,
+  });
+
+  const blocks = calls[0].body.blocks;
+  assert.ok(Array.isArray(blocks), "payload includes a blocks array");
+
+  // text fallback is still the plain one-liner
+  assert.match(calls[0].body.text, /^✅ Auto-fixed & merged:/);
+
+  // test-count credibility line
+  const context = blocks.find((b) => b.type === "context");
+  assert.ok(context, "has a context block");
+  assert.match(context.elements[0].text, /6\/6 tests passed/);
+
+  // a View PR button linking the PR
+  const actions = blocks.find((b) => b.type === "actions");
+  const button = actions?.elements?.[0];
+  assert.equal(button?.type, "button");
+  assert.equal(button?.text?.text, "View PR");
+  assert.equal(button?.url, "https://github.com/acme/acme-payments/pull/42");
+});
+
 test("notifySlack throws on missing inputs", async () => {
   installRecorder();
   await assert.rejects(() => notifySlack({ summary: "no url" }), /requires \{ summary, prUrl \}/);
