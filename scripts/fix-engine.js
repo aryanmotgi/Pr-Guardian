@@ -64,6 +64,9 @@ const VIOLATION = {
   bad_code: "  logger.debug('Payment card data', { cardNumber: pan, amount, currency })",
 };
 
+// no-op event emitter used when caller does not supply one
+const noopEmit = () => {};
+
 async function getFixFromClaude(badCode, rule, previousAttempt = null, testFailureOutput = null) {
   // ASSUMPTION: ANTHROPIC_API_KEY is set in .env
   const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -100,7 +103,7 @@ Return ONLY the corrected single line of code, with no explanation, no markdown,
   return response.content[0].text.trim();
 }
 
-async function runFixEngine(violation) {
+async function runFixEngine(violation, { onEvent = noopEmit } = {}) {
   if (!process.env.DAYTONA_API_KEY || process.env.DAYTONA_API_KEY === 'your_api_key_here') {
     throw new Error('DAYTONA_API_KEY not set in .env');
   }
@@ -114,18 +117,24 @@ async function runFixEngine(violation) {
 
   try {
     console.log('\nCreating sandbox...');
+    onEvent({ event: 'sandbox_create', status: 'starting' });
     sandbox = await daytona.create();
     console.log(`Sandbox created: ${sandbox.id}`);
+    onEvent({ event: 'sandbox_create', status: 'ready', sandbox_id: sandbox.id });
 
     console.log(`Cloning ${REPO_URL}...`);
+    onEvent({ event: 'clone', status: 'starting', repo: REPO_URL });
     const clone = await sandbox.process.executeCommand(`git clone ${REPO_URL} ${CLONE_PATH}`);
     if (clone.exitCode !== 0) throw new Error(`git clone failed: ${clone.result}`);
     console.log('Clone complete.');
+    onEvent({ event: 'clone', status: 'done' });
 
     console.log('Running npm install...');
+    onEvent({ event: 'install', status: 'starting' });
     const install = await sandbox.process.executeCommand('npm install', DEMO_REPO_PATH);
     if (install.exitCode !== 0) throw new Error(`npm install failed: ${install.result}`);
     console.log('Install complete.');
+    onEvent({ event: 'install', status: 'done' });
 
     // ASSUMPTION: violation.file is relative to CLONE_PATH
     const targetFile = `${CLONE_PATH}/${violation.file}`;
@@ -151,6 +160,7 @@ async function runFixEngine(violation) {
       if (writeB64.exitCode !== 0) throw new Error(`Could not inject bad code: ${writeB64.result}`);
     }
     console.log(`Injected bad code at line ${violation.line} of ${violation.file}`);
+    onEvent({ event: 'inject', file: violation.file, line: violation.line });
 
     // Retry loop — up to 3 attempts
     const MAX_ATTEMPTS = 3;
@@ -160,8 +170,10 @@ async function runFixEngine(violation) {
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       console.log(`\n=== Attempt ${attempt}/${MAX_ATTEMPTS} ===`);
+      onEvent({ event: 'attempt_start', attempt, max: MAX_ATTEMPTS });
 
       // Ask Claude — pass previous failure context on retry
+      onEvent({ event: 'claude_call', attempt, status: 'starting' });
       const fixedCode = await getFixFromClaude(
         violation.bad_code,
         violation.rule,
@@ -169,6 +181,7 @@ async function runFixEngine(violation) {
         attempt > 1 ? lastTestOutput : null
       );
       console.log(`Fix (attempt ${attempt}): ${fixedCode}`);
+      onEvent({ event: 'claude_call', attempt, status: 'done', fix: fixedCode });
 
       // Read current file state, swap current fix line with new fix
       const readCurrent = await sandbox.process.executeCommand(`cat "${targetFile}"`);
@@ -191,6 +204,7 @@ async function runFixEngine(violation) {
 
       // Run tests
       console.log('Running npm test...');
+      onEvent({ event: 'test', attempt, status: 'starting' });
       const test = await sandbox.process.executeCommand('npm test', DEMO_REPO_PATH);
 
       console.log('\n--- TEST OUTPUT ---');
@@ -206,6 +220,7 @@ async function runFixEngine(violation) {
       lastTestOutput = test.result;
 
       console.log(`[SSE] ${JSON.stringify({ event: 'attempt', attempt, status: passed ? 'passed' : 'failed', fix_applied: fixedCode })}`);
+      onEvent({ event: 'attempt_end', attempt, status: passed ? 'passed' : 'failed', fix_applied: fixedCode, tests_passed: testsPassed });
 
       if (passed) {
         const time_ms = Date.now() - t0;
@@ -235,6 +250,7 @@ async function runFixEngine(violation) {
           receipt,
         };
         console.log(`[SSE] ${JSON.stringify({ event: 'done', status: 'passed', attempts: attempt, time_ms, tigris_key: tigris.key })}`);
+        onEvent({ event: 'done', status: 'passed', attempts: attempt, time_ms, tigris_key: tigris.key });
         return result;
       }
 
@@ -269,6 +285,7 @@ async function runFixEngine(violation) {
       receipt,
     };
     console.log(`[SSE] ${JSON.stringify({ event: 'done', status: 'escalated', attempts: MAX_ATTEMPTS, time_ms, reason, tigris_key: tigris.key })}`);
+    onEvent({ event: 'done', status: 'escalated', attempts: MAX_ATTEMPTS, time_ms, reason, tigris_key: tigris.key });
     return result;
   } finally {
     if (sandbox) {
@@ -279,14 +296,18 @@ async function runFixEngine(violation) {
   }
 }
 
-// Run
-runFixEngine(VIOLATION)
-  .then((result) => {
-    console.log('\n=== FIX ENGINE RESULT ===');
-    console.log(JSON.stringify(result, null, 2));
-    process.exit(result.success ? 0 : 1);
-  })
-  .catch((err) => {
-    console.error('Fix engine error:', err.message);
-    process.exit(1);
-  });
+module.exports = { runFixEngine, saveReceiptToTigris };
+
+// CLI mode — only auto-run when invoked directly
+if (require.main === module) {
+  runFixEngine(VIOLATION)
+    .then((result) => {
+      console.log('\n=== FIX ENGINE RESULT ===');
+      console.log(JSON.stringify(result, null, 2));
+      process.exit(result.success ? 0 : 1);
+    })
+    .catch((err) => {
+      console.error('Fix engine error:', err.message);
+      process.exit(1);
+    });
+}
