@@ -107,6 +107,7 @@ async function runFromContract(pr = {}, result = {}) {
       file: violation.file,
       line: violation.line,
       description: violation.reason || reason,
+      badCode: violation.bad_code,
     },
     fix: { summary: changeSummary, diff, why: whyText, timeMs },
     // Only the "fix" path is gated on this; for it we've proven green above.

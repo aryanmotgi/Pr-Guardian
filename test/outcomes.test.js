@@ -112,7 +112,7 @@ test("ALLOW: posts a quiet receipt, does NOT merge, and sends NO alert (no @-men
   assert.equal(hasDangerButton, false, "allow has no alert button");
 });
 
-test("FIX: still the green 'Auto-fixed & merged' card (unchanged) and merges", async () => {
+test("FIX: green card is self-contained — location + before/after readable in Slack", async () => {
   const { gh, slack } = install();
   const out = await runMergeStage(fixtures.fix);
 
@@ -120,4 +120,10 @@ test("FIX: still the green 'Auto-fixed & merged' card (unchanged) and merges", a
   assert.equal(out.merged, true);
   assert.match(slack[0].body.text, /Auto-fixed & merged/);
   assert.doesNotMatch(slack[0].body.text, /<!|<@/, "no @-mention on success");
+
+  // The reader can see WHERE and WHAT changed without opening the PR.
+  const allText = JSON.stringify(slack[0].body.blocks);
+  assert.match(allText, /📍 src\/payment\.js:18/, "shows the location");
+  assert.match(allText, /```/, "embeds the change as a code block");
+  assert.match(allText, /card\.number\.slice\(-4\)/, "shows the actual change");
 });

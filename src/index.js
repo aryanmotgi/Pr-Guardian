@@ -86,15 +86,20 @@ async function postReceiptForOutcome(input) {
 function slackForOutcome(input) {
   const ref = `${input.repo.owner}/${input.repo.name}#${input.pr.number}`;
   const prUrl = input.pr?.url || ref;
+  const location = locationOf(input.violation);
 
   if (input.decision === "fix") {
-    const summary = `${input.violation?.rule || "rule violation"} — ${input.fix?.summary || "auto-fixed"}`;
-    return notifySlack({ summary, prUrl });
+    const rule = input.violation?.rule || "rule violation";
+    const change = input.fix?.summary;
+    // Avoid "reason — reason" when the fix engine sent no distinct summary.
+    const summary = change && change !== rule ? `${rule} — ${change}` : rule;
+    // Include a compact before/after so the reader gets the change in Slack.
+    return notifySlack({ summary, prUrl, location, change: compactChange(input.fix?.diff) });
   }
 
   if (input.decision === "allow") {
     const summary = `${ref} — ${input.fix?.why || "no real violation"}`;
-    return notifySlack({ outcome: "allow", summary, prUrl });
+    return notifySlack({ outcome: "allow", summary, prUrl, location });
   }
 
   // escalate
@@ -103,10 +108,31 @@ function slackForOutcome(input) {
     outcome: "escalate",
     summary,
     prUrl,
+    location,
+    change: compactChange(input.fix?.diff) || input.violation?.badCode,
     mention: config.slack.escalationMention,
     rule: input.violation?.rule,
     severity: input.severity || deriveSeverity(input.violation?.rule),
   });
+}
+
+// "file:line" (or just file) for the Slack location tag, when known.
+function locationOf(violation = {}) {
+  if (!violation?.file) return undefined;
+  return violation.line ? `${violation.file}:${violation.line}` : violation.file;
+}
+
+// A compact, readable change from a unified diff: just the changed (+/-) lines,
+// capped so the Slack card stays small.
+function compactChange(diff, max = 6) {
+  if (!diff) return undefined;
+  const lines = String(diff)
+    .split("\n")
+    .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l));
+  if (!lines.length) return undefined;
+  const shown = lines.slice(0, max);
+  if (lines.length > max) shown.push(`… (+${lines.length - max} more)`);
+  return shown.join("\n");
 }
 
 // Triage severity for an escalation. Honour an explicit input.severity from the

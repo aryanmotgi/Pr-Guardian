@@ -69,6 +69,8 @@ export async function notifySlack({
   mention,
   rule,
   severity,
+  location,
+  change,
 } = {}) {
   if (!summary || !prUrl) {
     throw new Error("notifySlack requires { summary, prUrl }");
@@ -77,17 +79,17 @@ export async function notifySlack({
   if (outcome === "escalate") {
     const sev = severityLabel(severity);
     const text = `${mention ? mention + " " : ""}⚠️ ${sev ? sev + " · " : ""}Needs human review — caught a violation I couldn't auto-fix safely: ${summary} ${prUrl}`;
-    return sendSlack(text, buildEscalateBlocks({ summary, prUrl, mention, rule, sev }));
+    return sendSlack(text, buildEscalateBlocks({ summary, prUrl, mention, rule, sev, location, change }));
   }
 
   if (outcome === "allow") {
     const text = `✅ Reviewed — compliant, no action needed: ${summary} ${prUrl}`;
-    return sendSlack(text, buildAllowBlocks({ summary, prUrl }));
+    return sendSlack(text, buildAllowBlocks({ summary, prUrl, location }));
   }
 
-  // outcome === "fix" (default) — unchanged
+  // outcome === "fix" (default)
   const text = `✅ Auto-fixed & merged: ${summary} ${prUrl}`;
-  return sendSlack(text, buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal }));
+  return sendSlack(text, buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal, location, change }));
 }
 
 // Severity badge for escalations, so a human can triage at a glance.
@@ -98,15 +100,22 @@ function severityLabel(severity) {
 
 // ESCALATE — a warning alert. The @-mention lives in both the fallback text and
 // the section so Slack actually notifies the human; the button is red (danger).
-function buildEscalateBlocks({ summary, prUrl, mention, rule, sev }) {
+function buildEscalateBlocks({ summary, prUrl, mention, rule, sev, location, change }) {
   const heading = `⚠️ *Needs human review — couldn't auto-fix safely*${sev ? `  ·  ${sev}` : ""}`;
   const section = [heading, summary];
   if (mention) section.push(`${mention} — please take a look.`);
 
   const blocks = [{ type: "section", text: { type: "mrkdwn", text: section.join("\n") } }];
-  if (rule) {
-    blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `*Rule violated:* ${rule}` }] });
+
+  const meta = [];
+  if (rule) meta.push(`*Rule violated:* ${rule}`);
+  if (location) meta.push(`📍 ${location}`);
+  if (meta.length) blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: meta.join("  ·  ") }] });
+
+  if (change) {
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: `*Offending code:*\n${codeBlock(change)}` } });
   }
+
   blocks.push({
     type: "actions",
     elements: [
@@ -123,30 +132,35 @@ function buildEscalateBlocks({ summary, prUrl, mention, rule, sev }) {
 }
 
 // ALLOW — a single quiet context line. No @-mention, no button, no alarm.
-function buildAllowBlocks({ summary, prUrl }) {
+function buildAllowBlocks({ summary, prUrl, location }) {
+  const loc = location ? ` · 📍 ${location}` : "";
   return [
     {
       type: "context",
       elements: [
-        { type: "mrkdwn", text: `✅ Reviewed — compliant, no action needed · ${summary} · <${prUrl}|PR>` },
+        { type: "mrkdwn", text: `✅ Reviewed — compliant, no action needed · ${summary}${loc} · <${prUrl}|PR>` },
       ],
     },
   ];
 }
 
-function buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal }) {
+// FIX — the green merged card. Self-contained: location + a compact before/after
+// so a reader gets the whole story in Slack without opening the PR.
+function buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal, location, change }) {
   const blocks = [
     { type: "section", text: { type: "mrkdwn", text: `✅ *Auto-fixed & merged*\n${summary}` } },
   ];
 
+  const meta = [];
+  if (location) meta.push(`📍 ${location}`);
   if (typeof testsTotal === "number") {
     const passed = typeof testsPassed === "number" ? testsPassed : testsTotal;
-    blocks.push({
-      type: "context",
-      elements: [
-        { type: "mrkdwn", text: `🧪 ${passed}/${testsTotal} tests passed · verified in an isolated sandbox` },
-      ],
-    });
+    meta.push(`🧪 ${passed}/${testsTotal} tests passed · verified in an isolated sandbox`);
+  }
+  if (meta.length) blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: meta.join("  ·  ") }] });
+
+  if (change) {
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: `*Change:*\n${codeBlock(change)}` } });
   }
 
   // A url button opens the PR in the browser. Per Slack docs, url buttons still
@@ -166,6 +180,11 @@ function buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal }) {
   });
 
   return blocks;
+}
+
+// Wrap a snippet in a Slack mrkdwn code fence.
+function codeBlock(text) {
+  return "```\n" + String(text).trim() + "\n```";
 }
 
 function indent(text) {
