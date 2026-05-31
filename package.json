@@ -1,0 +1,17 @@
+{
+  "name": "pr-guardian-merge",
+  "version": "0.1.0",
+  "description": "PR Guardian — merge + receipt + notifications stage (Kaushik)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "demo": "node src/run-demo.js",
+    "demo:allow": "node src/run-demo.js allow",
+    "demo:escalate": "node src/run-demo.js escalate",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.1.1",
+    "@slack/web-api": "^7.9.1"
+  }
+}
