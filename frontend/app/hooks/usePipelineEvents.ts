@@ -2,6 +2,13 @@
 import { useEffect, useReducer, useRef } from "react";
 import type { PipelineEvent, PRRun, PipelineStep, StepState } from "@/app/types";
 
+const BACKEND = "https://pr-guardian-fix-engine.onrender.com";
+export const ENDPOINTS = {
+  events: `${BACKEND}/events`,
+  fix:    `${BACKEND}/fix`,
+  health: `${BACKEND}/health`,
+} as const;
+
 const STEPS: PipelineStep[] = ["trigger", "decide", "fix", "test", "retry", "merge", "receipt", "slack"];
 
 function blankRun(runId: string, prNumber: number): PRRun {
@@ -57,7 +64,7 @@ export function usePipelineEvents() {
   const pendingRunMeta = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
-    const es = new EventSource("/api/events");
+    const es = new EventSource(ENDPOINTS.events);
     es.onmessage = (e) => {
       const event: PipelineEvent = JSON.parse(e.data);
       const prNumber = pendingRunMeta.current.get(event.runId) ?? 1;
@@ -67,7 +74,7 @@ export function usePipelineEvents() {
   }, []);
 
   async function trigger(prNumber: number) {
-    const res = await fetch("/api/trigger", {
+    const res = await fetch(ENDPOINTS.fix, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prNumber }),
