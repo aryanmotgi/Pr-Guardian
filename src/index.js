@@ -10,8 +10,9 @@
 // it must NOT merge on "allow" or "escalate".
 
 import { mergePR, postComment } from "./github.js";
-import { notifySlack, sendSlack } from "./slack.js";
-import { buildReceipt } from "./receipt.js";
+import { notifySlack } from "./slack.js";
+import { buildReceipt, postReceipt } from "./receipt.js";
+import { config } from "./config.js";
 
 export async function runMergeStage(input) {
   validate(input);
@@ -30,17 +31,14 @@ export async function runMergeStage(input) {
     outcome.merged = Boolean(outcome.merge?.merged);
   }
 
-  // Everyone gets a receipt — the proof of what happened and why.
-  const body = buildReceipt(input);
-  outcome.receipt = await postComment(
-    { owner: input.repo.owner, repo: input.repo.name, prNumber: input.pr.number },
-    body
-  );
+  // Receipt — the proof. Content differs by outcome: fix keeps its existing rich
+  // receipt (unchanged); allow/escalate post outcome-specific receipts.
+  outcome.receipt = await postReceiptForOutcome(input);
 
-  // And a Slack ping so a human is always in the loop. Best-effort: a failed
-  // notification must NEVER undo a completed merge — catch and record instead.
+  // Slack — tone differs by outcome. Best-effort: a failed notification must
+  // NEVER undo a completed merge — catch and record instead.
   try {
-    outcome.slack = await slackPing(input, outcome);
+    outcome.slack = await slackForOutcome(input, outcome);
   } catch (err) {
     console.warn("slack ping failed (non-fatal):", err.message);
     outcome.slack = { sent: false, error: err.message };
@@ -49,20 +47,65 @@ export async function runMergeStage(input) {
   return outcome;
 }
 
-// Decision-aware Slack message. The merged case routes through notifySlack (the
-// canonical one-line "Auto-fixed & merged" ping); allow/escalate send their own
-// short line via the shared sendSlack primitive.
-function slackPing(input, outcome) {
+const targetOf = (input) => ({
+  owner: input.repo.owner,
+  repo: input.repo.name,
+  prNumber: input.pr.number,
+});
+
+// FIX keeps its existing rich receipt (buildReceipt). ALLOW and ESCALATE get
+// distinct, outcome-specific receipts via the shared postReceipt.
+async function postReceiptForOutcome(input) {
+  const target = targetOf(input);
+
+  if (input.decision === "fix") {
+    return postComment(target, buildReceipt(input)); // unchanged
+  }
+
+  if (input.decision === "allow") {
+    const url = await postReceipt({
+      ...target,
+      outcome: "allow",
+      whyText: input.fix?.why || input.violation?.description || "Reviewed — compliant.",
+    });
+    return { url };
+  }
+
+  // escalate
+  const url = await postReceipt({
+    ...target,
+    outcome: "escalate",
+    rule: input.violation?.rule,
+    whyText: input.fix?.why || input.violation?.description,
+  });
+  return { url };
+}
+
+// FIX → the green "Auto-fixed & merged" card (unchanged). ALLOW → a quiet,
+// no-alert ping. ESCALATE → a warning alert that @-mentions a human.
+function slackForOutcome(input) {
   const ref = `${input.repo.owner}/${input.repo.name}#${input.pr.number}`;
-  const url = input.pr?.url || "";
-  if (outcome.decision === "fix" && outcome.merged) {
+  const prUrl = input.pr?.url || ref;
+
+  if (input.decision === "fix") {
     const summary = `${input.violation?.rule || "rule violation"} — ${input.fix?.summary || "auto-fixed"}`;
-    return notifySlack({ summary, prUrl: url || ref });
+    return notifySlack({ summary, prUrl });
   }
-  if (outcome.decision === "allow") {
-    return sendSlack(`✅ PR Guardian allowed ${ref} — ${input.fix?.why || "no real violation"} ${url}`.trim());
+
+  if (input.decision === "allow") {
+    const summary = `${ref} — ${input.fix?.why || "no real violation"}`;
+    return notifySlack({ outcome: "allow", summary, prUrl });
   }
-  return sendSlack(`⚠️ PR Guardian escalated ${ref} for human review — ${input.violation?.description || ""} ${url}`.trim());
+
+  // escalate
+  const summary = `${ref} — ${input.violation?.description || input.violation?.rule || "needs review"}`;
+  return notifySlack({
+    outcome: "escalate",
+    summary,
+    prUrl,
+    mention: config.slack.escalationMention,
+    rule: input.violation?.rule,
+  });
 }
 
 function validate(input) {

@@ -30,6 +30,12 @@ export const config = {
     get channel() {
       return process.env.SLACK_CHANNEL || null;
     },
+    // Who to @-mention when a violation is escalated to a human. A real Slack
+    // mention is "<@USERID>" or a group "<!subteam^ID>"; "<!here>" pings active
+    // channel members. Override via SLACK_ESCALATION_MENTION.
+    get escalationMention() {
+      return process.env.SLACK_ESCALATION_MENTION || "<!here>";
+    },
   },
 };
 

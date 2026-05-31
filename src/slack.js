@@ -51,20 +51,78 @@ export async function sendSlack(text, blocks) {
   return { ok: true, status: res.status };
 }
 
-// Public API — ping the channel when a fix has merged.
-//   input:  { summary, prUrl, testsPassed?, testsTotal? }
+// Public API — announce an outcome to the channel.
+//   input:  { summary, prUrl, outcome?, testsPassed?, testsTotal?, mention?, rule? }
 //   output: { ok, status } on a live send, or { dryRun: true } in dry-run.
 //
-// Sends a Block Kit card (header + optional test-count + a "View PR" button) and
-// keeps the plain one-liner as `text` — Slack's required fallback when blocks
-// can't render. testsPassed/testsTotal are optional; when present they add a
-// credibility line ("🧪 6/6 tests passed").
-export async function notifySlack({ summary, prUrl, testsPassed, testsTotal } = {}) {
+// Tone differs by `outcome` (default "fix"):
+//   fix      → green "Auto-fixed & merged" card (+ optional test count + View PR)
+//   allow    → a quiet, no-alert line (no @-mention, no button)
+//   escalate → a warning alert that @-mentions a human and names the rule
+// The plain one-liner is always sent as `text` — Slack's required fallback.
+export async function notifySlack({
+  summary,
+  prUrl,
+  outcome = "fix",
+  testsPassed,
+  testsTotal,
+  mention,
+  rule,
+} = {}) {
   if (!summary || !prUrl) {
     throw new Error("notifySlack requires { summary, prUrl }");
   }
+
+  if (outcome === "escalate") {
+    const text = `${mention ? mention + " " : ""}⚠️ Needs human review — caught a violation I couldn't auto-fix safely: ${summary} ${prUrl}`;
+    return sendSlack(text, buildEscalateBlocks({ summary, prUrl, mention, rule }));
+  }
+
+  if (outcome === "allow") {
+    const text = `✅ Reviewed — compliant, no action needed: ${summary} ${prUrl}`;
+    return sendSlack(text, buildAllowBlocks({ summary, prUrl }));
+  }
+
+  // outcome === "fix" (default) — unchanged
   const text = `✅ Auto-fixed & merged: ${summary} ${prUrl}`;
   return sendSlack(text, buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal }));
+}
+
+// ESCALATE — a warning alert. The @-mention lives in both the fallback text and
+// the section so Slack actually notifies the human; the button is red (danger).
+function buildEscalateBlocks({ summary, prUrl, mention, rule }) {
+  const section = ["⚠️ *Needs human review — couldn't auto-fix safely*", summary];
+  if (mention) section.push(`${mention} — please take a look.`);
+
+  const blocks = [{ type: "section", text: { type: "mrkdwn", text: section.join("\n") } }];
+  if (rule) {
+    blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: `*Rule violated:* ${rule}` }] });
+  }
+  blocks.push({
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: { type: "plain_text", text: "Review PR" },
+        url: prUrl,
+        action_id: "review_pr",
+        style: "danger",
+      },
+    ],
+  });
+  return blocks;
+}
+
+// ALLOW — a single quiet context line. No @-mention, no button, no alarm.
+function buildAllowBlocks({ summary, prUrl }) {
+  return [
+    {
+      type: "context",
+      elements: [
+        { type: "mrkdwn", text: `✅ Reviewed — compliant, no action needed · ${summary} · <${prUrl}|PR>` },
+      ],
+    },
+  ];
 }
 
 function buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal }) {

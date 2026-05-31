@@ -17,16 +17,40 @@ import { postComment } from "./github.js";
 //
 // Auth/Octokit/dry-run are reused from github.js via postComment — no second
 // GitHub setup here.
-export async function postReceipt({ owner, repo, prNumber, whyText, changeSummary, diff }) {
-  const body = formatReceiptComment({ whyText, changeSummary, diff });
+export async function postReceipt({ owner, repo, prNumber, whyText, changeSummary, diff, outcome = "fix", rule }) {
+  const body = formatReceiptComment({ outcome, whyText, changeSummary, diff, rule });
   const res = await postComment({ owner, repo, prNumber }, body);
   return res.url ?? null;
 }
 
-// The receipt markdown: short header + 2-4 skimmable lines — which decision was
-// violated (whyText), what changed to comply (changeSummary), tests green — plus
-// an optional collapsible before/after diff (the proof the code really changed).
-export function formatReceiptComment({ whyText, changeSummary, diff }) {
+// The receipt markdown, by outcome:
+//   fix      → what was wrong / what changed / tests green (+ optional diff)
+//   allow    → a short, quiet "reviewed — compliant, no action needed"
+//   escalate → flags it for a human and names the rule that was violated
+// The fix template is the default and is unchanged.
+export function formatReceiptComment({ outcome = "fix", whyText, changeSummary, diff, rule }) {
+  if (outcome === "allow") {
+    return [
+      "### ✅ PR Guardian — Reviewed: compliant, no action needed",
+      "",
+      whyText || "Reviewed this change against our rules — nothing to fix.",
+      "",
+      "<sub>Autonomous receipt from PR Guardian · no changes were made.</sub>",
+    ].join("\n");
+  }
+
+  if (outcome === "escalate") {
+    const out = [
+      "### ⚠️ PR Guardian — Caught a violation I couldn't auto-fix safely — needs human review",
+      "",
+      `**Rule violated:** ${rule || "(unspecified)"}`,
+    ];
+    if (whyText) out.push(`**Why a human is needed:** ${whyText}`);
+    out.push("", "<sub>Autonomous receipt from PR Guardian · not merged — awaiting a human.</sub>");
+    return out.join("\n");
+  }
+
+  // outcome === "fix" (default) — unchanged
   const lines = [
     "### 🛡️ PR Guardian — compliance fix applied",
     "",
