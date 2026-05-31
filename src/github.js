@@ -20,19 +20,24 @@ export function _setOctokit(client) {
   _octokit = client;
 }
 
-// Post the receipt as a comment on the PR.
-// repo: { owner, name }, pr: { number }
-export async function postReceipt({ repo, pr }, body) {
+// Low-level: post a comment on a PR (PRs are issues in the GitHub API). This is
+// the single shared primitive every receipt goes through — it reuses the same
+// Octokit client, auth, and dry-run guard as mergePR, so there is no second
+// GitHub setup to keep in sync.
+// target: { owner, repo, prNumber }  →  returns { url } (or { dryRun } in dry-run)
+//
+// Verified against the GitHub REST docs (see docs/sponsors.md):
+//   POST /repos/{owner}/{repo}/issues/{issue_number}/comments → 201, body.html_url
+export async function postComment({ owner, repo, prNumber }, body) {
   if (config.dryRun || !canCallGithub()) {
-    log("postReceipt", repo, pr);
+    console.log(`🐙 [dry-run] github.postComment → ${owner}/${repo}#${prNumber}`);
     console.log(indent(body));
     return { dryRun: true };
   }
-  // ASSUMPTION: issues.createComment works on PRs (PRs are issues in the API).
   const res = await octokit().issues.createComment({
-    owner: repo.owner,
-    repo: repo.name,
-    issue_number: pr.number,
+    owner,
+    repo,
+    issue_number: prNumber,
     body,
   });
   return { url: res.data.html_url };

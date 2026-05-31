@@ -9,7 +9,7 @@
 // it correctly handles all three branches of the confidence gate — critically,
 // it must NOT merge on "allow" or "escalate".
 
-import { mergePR, postReceipt } from "./github.js";
+import { mergePR, postComment } from "./github.js";
 import { notifySlack } from "./slack.js";
 import { buildReceipt } from "./receipt.js";
 
@@ -32,7 +32,10 @@ export async function runMergeStage(input) {
 
   // Everyone gets a receipt — the proof of what happened and why.
   const body = buildReceipt(input);
-  outcome.receipt = await postReceipt(input, body);
+  outcome.receipt = await postComment(
+    { owner: input.repo.owner, repo: input.repo.name, prNumber: input.pr.number },
+    body
+  );
 
   // And a Slack ping so a human is always in the loop.
   outcome.slack = await notifySlack(input, outcome.merge || {});

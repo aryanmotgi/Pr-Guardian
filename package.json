@@ -8,6 +8,7 @@
     "demo": "node src/run-demo.js",
     "demo:allow": "node src/run-demo.js allow",
     "demo:escalate": "node src/run-demo.js escalate",
+    "receipt": "node src/run-receipt.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

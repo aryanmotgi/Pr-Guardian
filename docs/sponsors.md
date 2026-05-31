@@ -10,7 +10,7 @@ The sponsor SDKs are NOT reliably in Claude's training data. Before writing inte
 - Render — hosting.               Docs: 
 
 ## Also used
-- GitHub API (Octokit).  Docs: 
+- GitHub API (Octokit).  Docs: https://docs.github.com/en/rest/issues/comments (create issue comment: POST /repos/{owner}/{repo}/issues/{issue_number}/comments, works on PRs, returns html_url) · https://octokit.github.io/rest.js/
 - Anthropic API (Claude). Docs: 
 - Slack API.             Docs: 
 
