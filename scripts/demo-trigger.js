@@ -62,11 +62,73 @@ function postFix(payload) {
   });
 }
 
+// Clean payment.js — what main should have before the demo PR introduces the violation
+const CLEAN_PAYMENT_JS = `const logger = require('./logger');
+
+function maskPan(pan) {
+  // Show only last 4 digits — rule: never log full PAN
+  const stripped = String(pan).replace(/\\s/g, '');
+  const masked = stripped.replace(/\\d(?=\\d{4})/g, '*');
+  return String(pan).includes(' ') ? masked.match(/.{1,4}/g).join(' ') : masked;
+}
+
+function processPayment({ cardNumber, amount, currency = 'USD' }) {
+  if (!cardNumber || String(cardNumber).replace(/\\s/g, '').length < 13) {
+    throw new Error('Invalid card number');
+  }
+  if (!amount || amount <= 0) {
+    throw new Error('Invalid amount');
+  }
+
+  const pan = String(cardNumber).replace(/\\s/g, '');
+
+  // Log masked card only — never the full PAN
+  logger.info('Processing payment', {
+    last4: pan.slice(-4),
+    amount,
+    currency,
+  });
+
+  const transactionId = \`txn_\${Date.now()}_\${pan.slice(-4)}\`;
+  logger.info('Payment authorized', { transactionId, amount, currency });
+
+  return { success: true, transactionId, amount, currency };
+}
+
+module.exports = { processPayment, maskPan };
+`;
+
+async function resetMain() {
+  // Get current SHA of src/payment.js on main so we can update it
+  const current = await ghRequest(`/repos/${OWNER}/${REPO}/contents/src%2Fpayment.js?ref=main`);
+  if (current.status !== 200) {
+    console.warn("Could not fetch payment.js SHA — skipping main reset");
+    return;
+  }
+  const sha = current.body.sha;
+  const content = Buffer.from(CLEAN_PAYMENT_JS).toString("base64");
+  const update = await ghRequest(`/repos/${OWNER}/${REPO}/contents/src%2Fpayment.js`, "PUT", {
+    message: "chore: reset demo — clean PAN masking before violation PR",
+    content,
+    sha,
+    branch: "main",
+  });
+  if (update.status === 200) {
+    console.log("main reset to clean code ✓");
+  } else {
+    console.warn("main reset failed:", update.body?.message ?? update.status);
+  }
+}
+
 async function run() {
   console.log("\n=== PR Guardian — Demo Trigger ===\n");
 
+  // 0. Reset main to clean state so the fix engine has something meaningful to fix
+  console.log("Resetting main to clean state…");
+  await resetMain();
+
   // 1. Find open PR from demo/violation, or create one
-  console.log(`Checking for open PR: ${HEAD} → ${BASE}…`);
+  console.log(`\nChecking for open PR: ${HEAD} → ${BASE}…`);
   const list = await ghRequest(`/repos/${OWNER}/${REPO}/pulls?state=open&head=${OWNER}:${HEAD}&base=${BASE}`);
   let pr;
 
