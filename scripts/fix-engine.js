@@ -3,6 +3,7 @@ require("dotenv").config();
 const { Daytona } = require("@daytona/sdk");
 const Anthropic = require("@anthropic-ai/sdk");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const { getKalibrRouter } = require("./kalibr");
 
 const DEFAULT_REPO_URL = "https://github.com/aryanmotgi/Pr-Guardian.git";
 const CLONE_PATH = "/tmp/pr-guardian";
@@ -85,11 +86,6 @@ async function getFixFromClaude(
 	previousAttempt = null,
 	testFailureOutput = null,
 ) {
-	// ASSUMPTION: ANTHROPIC_API_KEY is set in .env
-	const client = new Anthropic.default({
-		apiKey: process.env.ANTHROPIC_API_KEY,
-	});
-
 	let content;
 	if (previousAttempt && testFailureOutput) {
 		content = `You are a security-focused code fixer. A rule was violated: "${rule}".
@@ -113,12 +109,33 @@ ${badCode}
 Return ONLY the corrected single line of code, with no explanation, no markdown, no backticks. Preserve the original indentation. The fix must mask the card number (show only last 4 digits) rather than log it raw.`;
 	}
 
+	const messages = [{ role: "user", content }];
+
+	// Kalibr path — routes to Claude with self-healing (repairPrompt on bad output).
+	// Falls back to direct Anthropic if KALIBR_API_KEY not set or call fails.
+	const router = getKalibrRouter();
+	if (router) {
+		try {
+			// ASSUMPTION: router.completion() accepts the same {role, content}
+			//   message format as the OpenAI and Anthropic SDKs.
+			// ASSUMPTION: response is OpenAI-compatible — choices[0].message.content.
+			//   Confirmed by KalibrChatCompletion type in @kalibr/sdk dist/index.d.ts.
+			const response = await router.completion(messages, { maxTokens: 256 });
+			console.log("[kalibr] completion routed successfully.");
+			return response.choices[0].message.content.trim();
+		} catch (err) {
+			console.warn(`[kalibr] completion failed (${err.message}) — falling back to Anthropic.`);
+		}
+	}
+
+	// Direct Anthropic fallback — used when KALIBR_API_KEY unset or Kalibr call fails.
+	// ASSUMPTION: ANTHROPIC_API_KEY is set in .env
+	const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
 	const response = await client.messages.create({
 		model: "claude-sonnet-4-6",
 		max_tokens: 256,
-		messages: [{ role: "user", content }],
+		messages,
 	});
-
 	return response.content[0].text.trim();
 }
 
@@ -291,6 +308,29 @@ async function runFixEngine(violation, { onEvent = noopEmit, pr = null } = {}) {
 			});
 			lastFixedCode = fixedCode;
 			lastTestOutput = test.result;
+
+			// Report test outcome to Kalibr so it can learn from real results.
+			// This is the signal that closes the loop: Kalibr knows whether the
+			// code it routed to Claude actually produced a working fix.
+			// ASSUMPTION: router.report(success, reason, score, failureCategory)
+			//   is safe to call even if completion() fell back to Anthropic —
+			//   the try/catch swallows "no trace to report on" errors non-fatally.
+			// ASSUMPTION: "validation_failed" is the correct FAILURE_CATEGORIES value
+			//   for a fix that compiles but whose tests don't pass.
+			const router = getKalibrRouter();
+			if (router) {
+				try {
+					await router.report(
+						passed,
+						passed ? null : "Tests failed in Daytona sandbox",
+						null,
+						passed ? null : "validation_failed",
+					);
+					console.log(`[kalibr] reported outcome: ${passed ? "success" : "validation_failed"}`);
+				} catch (err) {
+					console.warn(`[kalibr] report() failed (${err.message}) — non-fatal.`);
+				}
+			}
 
 			console.log(
 				`[SSE] ${JSON.stringify({ event: "attempt", attempt, status: passed ? "passed" : "failed", fix_applied: fixedCode })}`,
