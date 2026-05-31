@@ -25,6 +25,7 @@
   "homepage": "https://github.com/aryanmotgi/Pr-Guardian#readme",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
+    "@aws-sdk/client-s3": "^3.1057.0",
     "@daytona/sdk": "^0.183.0",
     "dotenv": "^17.4.2"
   }

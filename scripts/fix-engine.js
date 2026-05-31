@@ -1,10 +1,60 @@
 require('dotenv').config();
 const { Daytona } = require('@daytona/sdk');
 const Anthropic = require('@anthropic-ai/sdk');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 
 const REPO_URL = 'https://github.com/aryanmotgi/Pr-Guardian.git';
 const CLONE_PATH = '/tmp/pr-guardian';
 const DEMO_REPO_PATH = `${CLONE_PATH}/demo-repo`;
+
+// Tigris S3-compatible endpoint + region (from Tigris console bucket page).
+const TIGRIS_ENDPOINT = 'https://t3.storage.dev';
+const TIGRIS_REGION = 'auto';
+
+function getTigrisClient() {
+  if (!process.env.TIGRIS_ACCESS_KEY_ID || !process.env.TIGRIS_SECRET_ACCESS_KEY) {
+    return null;
+  }
+  return new S3Client({
+    endpoint: TIGRIS_ENDPOINT,
+    region: TIGRIS_REGION,
+    credentials: {
+      accessKeyId: process.env.TIGRIS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.TIGRIS_SECRET_ACCESS_KEY,
+    },
+    // ASSUMPTION: Tigris (like most non-AWS S3 providers) prefers path-style addressing
+    // over virtual-hosted-style — avoids DNS issues with bucket subdomains.
+    forcePathStyle: true,
+  });
+}
+
+async function saveReceiptToTigris(receipt) {
+  const client = getTigrisClient();
+  const bucket = process.env.TIGRIS_BUCKET_NAME;
+  if (!client || !bucket) {
+    console.log('Tigris credentials not set — skipping receipt upload.');
+    return { key: null, uploaded: false, reason: 'tigris_not_configured' };
+  }
+
+  const key = `receipts/${receipt.timestamp}.json`;
+  const body = JSON.stringify(receipt, null, 2);
+
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: 'application/json',
+      })
+    );
+    console.log(`Receipt saved to Tigris: s3://${bucket}/${key}`);
+    return { key, uploaded: true };
+  } catch (err) {
+    console.error('Tigris upload failed:', err.message);
+    return { key: null, uploaded: false, reason: err.message };
+  }
+}
 
 // The fake violation fed to the fix engine
 const VIOLATION = {
@@ -159,6 +209,20 @@ async function runFixEngine(violation) {
 
       if (passed) {
         const time_ms = Date.now() - t0;
+        const timestamp = new Date().toISOString();
+        const receipt = {
+          timestamp,
+          rule_broken: violation.rule,
+          original_code: violation.bad_code,
+          fixed_code: fixedCode,
+          attempts: attempt,
+          tests_passed: testsPassed,
+          time_ms,
+          diff: { before: violation.bad_code, after: fixedCode },
+          attempt_log: attemptLog,
+          escalated: false,
+        };
+        const tigris = await saveReceiptToTigris(receipt);
         const result = {
           success: true,
           attempts: attempt,
@@ -167,8 +231,10 @@ async function runFixEngine(violation) {
           tests_passed: testsPassed,
           time_ms,
           attempt_log: attemptLog,
+          tigris_key: tigris.key,
+          receipt,
         };
-        console.log(`[SSE] ${JSON.stringify({ event: 'done', status: 'passed', attempts: attempt, time_ms })}`);
+        console.log(`[SSE] ${JSON.stringify({ event: 'done', status: 'passed', attempts: attempt, time_ms, tigris_key: tigris.key })}`);
         return result;
       }
 
@@ -177,6 +243,21 @@ async function runFixEngine(violation) {
 
     const time_ms = Date.now() - t0;
     const reason = 'Tests still failing after max attempts';
+    const timestamp = new Date().toISOString();
+    const receipt = {
+      timestamp,
+      rule_broken: violation.rule,
+      original_code: violation.bad_code,
+      fixed_code: lastFixedCode,
+      attempts: MAX_ATTEMPTS,
+      tests_passed: null,
+      time_ms,
+      diff: { before: violation.bad_code, after: lastFixedCode },
+      attempt_log: attemptLog,
+      escalated: true,
+      reason,
+    };
+    const tigris = await saveReceiptToTigris(receipt);
     const result = {
       escalate: true,
       reason,
@@ -184,8 +265,10 @@ async function runFixEngine(violation) {
       diff: { before: violation.bad_code, after: lastFixedCode },
       time_ms,
       attempt_log: attemptLog,
+      tigris_key: tigris.key,
+      receipt,
     };
-    console.log(`[SSE] ${JSON.stringify({ event: 'done', status: 'escalated', attempts: MAX_ATTEMPTS, time_ms, reason })}`);
+    console.log(`[SSE] ${JSON.stringify({ event: 'done', status: 'escalated', attempts: MAX_ATTEMPTS, time_ms, reason, tigris_key: tigris.key })}`);
     return result;
   } finally {
     if (sandbox) {
