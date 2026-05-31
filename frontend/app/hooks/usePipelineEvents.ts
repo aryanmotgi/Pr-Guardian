@@ -134,12 +134,9 @@ function reducer(state: { runs: PRRun[] }, event: DispatchEvent): { runs: PRRun[
   const { runs } = state;
   const idx = runs.findIndex((r) => r.id === event.runId);
 
-  if (idx === -1) {
-    const run = blankRun(event.runId, event.prNumber ?? 1, event.prTitle);
-    return { runs: [run, ...runs].slice(0, 10) };
-  }
-
-  const run = { ...runs[idx], steps: { ...runs[idx].steps } };
+  const run = idx === -1
+    ? blankRun(event.runId, event.prNumber ?? 1, event.prTitle)
+    : { ...runs[idx], steps: { ...runs[idx].steps } };
 
   if (event.type === "step" && event.step) {
     run.steps[event.step] = {
@@ -154,6 +151,7 @@ function reducer(state: { runs: PRRun[] }, event: DispatchEvent): { runs: PRRun[
     run.done = true;
   }
 
+  if (idx === -1) return { runs: [run, ...runs].slice(0, 10) };
   const next = [...runs];
   next[idx] = run;
   return { runs: next };
