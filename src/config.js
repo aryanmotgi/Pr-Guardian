@@ -23,6 +23,33 @@ export const config = {
     },
   },
 
+  // Opsera DevSecOps compliance gate — runs RIGHT BEFORE merge when enabled.
+  // Opt-in: OFF by default so the core close-loop (and its tests) are unchanged.
+  opsera: {
+    // The gate only runs when explicitly turned on.
+    get enabled() {
+      return process.env.OPSERA_GATE === "true";
+    },
+    // Bearer token for the Opsera MCP server. VERIFIED from docs: auth is
+    // `Authorization: Bearer <token>`, token from Profile → Access Tokens
+    // (scope "API Access"). Read at access time; never committed.
+    get apiKey() {
+      return process.env.OPSERA_API_KEY || null;
+    },
+    // ASSUMPTION: the MCP server URL. The agents page shows
+    // https://mcp.opsera.io/mcp, but the docs' config example uses
+    // https://agent.opsera.ai/mcp and notes tenant-specific URLs exist
+    // ("contact Opsera for your unique API URL"). Override via OPSERA_MCP_URL.
+    get url() {
+      return process.env.OPSERA_MCP_URL || "https://mcp.opsera.io/mcp";
+    },
+    // Demo-only knob: with no creds (dry-run) the gate runs a SIMULATED scan.
+    // Set OPSERA_SIM_FAIL=true to simulate a failing scan (the escalate branch).
+    get simulateFail() {
+      return process.env.OPSERA_SIM_FAIL === "true";
+    },
+  },
+
   slack: {
     get token() {
       return process.env.SLACK_BOT_TOKEN || null;

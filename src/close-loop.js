@@ -15,6 +15,8 @@
 // only hard error is a PR we can't even identify (no owner/repo/number).
 
 import { runMergeStage } from "./index.js";
+import { validateWithOpsera } from "./opsera.js";
+import { config } from "./config.js";
 
 const VALID = ["fix", "allow", "escalate"];
 
@@ -73,6 +75,23 @@ async function runFromContract(pr = {}, result = {}) {
     outcome = "escalate";
   }
 
+  // 2b) Opsera DevSecOps compliance gate — runs RIGHT BEFORE merge, on a fix
+  //     that already passed the test gate. A failing scan blocks the merge and
+  //     escalates (no merge), so a human reviews the flagged finding. Opt-in:
+  //     a no-op pass when OPSERA_GATE is off, so the core path is unchanged.
+  let opseraReason = null;
+  let opseraFindings = [];
+  if (outcome === "fix") {
+    const scan = await validateWithOpsera({ pr, result });
+    opseraFindings = scan.findings;
+    if (!scan.passed) {
+      opseraReason = `Opsera compliance scan flagged ${scan.findings.length} issue(s)`;
+      console.warn(`closeLoop: not merging — ${opseraReason}. Downgrading fix → escalate for human review.`);
+      outcome = "escalate";
+    }
+  }
+  const opseraDetail = opseraFindings.map((f) => f.message || f.rule).filter(Boolean).join("; ");
+
   // 3) Build the content from result + violation, with safe fallbacks.
   const reason = violation.reason || result.reason || result.whyText;
   // Smart human-facing fallback when the fix engine sends no text: prefer the
@@ -88,9 +107,13 @@ async function runFromContract(pr = {}, result = {}) {
 
   let whyText;
   if (outcome === "escalate") {
-    whyText = gateReason
-      ? `A fix was produced but ${gateReason}, so it can't be safely merged — a human should verify.`
-      : result.why || violationDesc || "Couldn't auto-fix this safely — needs human review.";
+    if (opseraReason) {
+      whyText = `Opsera compliance gate blocked the merge — ${opseraDetail || opseraReason}. A human should review before merging.`;
+    } else if (gateReason) {
+      whyText = `A fix was produced but ${gateReason}, so it can't be safely merged — a human should verify.`;
+    } else {
+      whyText = result.why || violationDesc || "Couldn't auto-fix this safely — needs human review.";
+    }
   } else if (outcome === "allow") {
     whyText = result.why || violationDesc || "Reviewed — compliant, no action needed.";
   } else {
@@ -103,10 +126,10 @@ async function runFromContract(pr = {}, result = {}) {
     repo: { owner, name: repo },
     pr: { number, url, title: pr.title },
     violation: {
-      rule: violationDesc || "(unspecified)",
+      rule: opseraReason ? "Opsera compliance gate" : violationDesc || "(unspecified)",
       file: violation.file,
       line: violation.line,
-      description: violation.reason || reason,
+      description: opseraReason ? opseraDetail || opseraReason : violation.reason || reason,
       badCode: violation.bad_code,
     },
     fix: { summary: changeSummary, diff, why: whyText, timeMs },
@@ -123,6 +146,11 @@ async function runFromContract(pr = {}, result = {}) {
     receiptUrl: out.receipt?.url ?? null,
     slack: out.slack,
     ...(gateReason ? { downgradedFrom: "fix", downgradeReason: gateReason } : {}),
+    ...(opseraReason
+      ? { downgradedFrom: "fix", downgradeReason: opseraReason, opsera: { passed: false, findings: opseraFindings } }
+      : opseraFindings.length || config.opsera.enabled
+        ? { opsera: { passed: true, findings: opseraFindings } }
+        : {}),
   };
 }
 
