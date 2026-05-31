@@ -1,7 +1,12 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { OpenAI } = require('openai');
 const { getRules } = require('./insforge');
 
-const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+// NEAR Private Inference — PR diffs containing sensitive data are processed
+// inside hardware-secured enclaves; the provider cannot read the prompts.
+const client = new OpenAI({
+  baseURL: 'https://cloud-api.near.ai/v1',
+  apiKey: process.env.NEAR_AI_API_KEY,
+});
 
 async function judge(diff) {
   const ruleDescriptions = await getRules();
@@ -37,13 +42,13 @@ Respond with ONLY valid JSON in this exact format, no explanation outside the JS
   "bad_code": "the exact bad line of code, or null"
 }`;
 
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+  const message = await client.chat.completions.create({
+    model: 'Qwen/Qwen3.5-122B-A10B',
     max_tokens: 256,
     messages: [{ role: 'user', content: prompt }],
   });
 
-  const text = message.content[0].text.trim();
+  const text = message.choices[0].message.content.trim();
 
   // Strip markdown code fences if present
   const jsonText = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
