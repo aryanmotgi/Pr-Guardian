@@ -10,7 +10,7 @@
 // it must NOT merge on "allow" or "escalate".
 
 import { mergePR, postComment } from "./github.js";
-import { notifySlack } from "./slack.js";
+import { notifySlack, sendSlack } from "./slack.js";
 import { buildReceipt } from "./receipt.js";
 
 export async function runMergeStage(input) {
@@ -37,10 +37,32 @@ export async function runMergeStage(input) {
     body
   );
 
-  // And a Slack ping so a human is always in the loop.
-  outcome.slack = await notifySlack(input, outcome.merge || {});
+  // And a Slack ping so a human is always in the loop. Best-effort: a failed
+  // notification must NEVER undo a completed merge — catch and record instead.
+  try {
+    outcome.slack = await slackPing(input, outcome);
+  } catch (err) {
+    console.warn("slack ping failed (non-fatal):", err.message);
+    outcome.slack = { sent: false, error: err.message };
+  }
 
   return outcome;
+}
+
+// Decision-aware Slack message. The merged case routes through notifySlack (the
+// canonical one-line "Auto-fixed & merged" ping); allow/escalate send their own
+// short line via the shared sendSlack primitive.
+function slackPing(input, outcome) {
+  const ref = `${input.repo.owner}/${input.repo.name}#${input.pr.number}`;
+  const url = input.pr?.url || "";
+  if (outcome.decision === "fix" && outcome.merged) {
+    const summary = `${input.violation?.rule || "rule violation"} — ${input.fix?.summary || "auto-fixed"}`;
+    return notifySlack({ summary, prUrl: url || ref });
+  }
+  if (outcome.decision === "allow") {
+    return sendSlack(`✅ PR Guardian allowed ${ref} — ${input.fix?.why || "no real violation"} ${url}`.trim());
+  }
+  return sendSlack(`⚠️ PR Guardian escalated ${ref} for human review — ${input.violation?.description || ""} ${url}`.trim());
 }
 
 function validate(input) {

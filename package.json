@@ -9,6 +9,8 @@
     "demo:allow": "node src/run-demo.js allow",
     "demo:escalate": "node src/run-demo.js escalate",
     "receipt": "node src/run-receipt.js",
+    "slack": "node src/run-slack.js",
+    "slack:live": "node --env-file=.env src/run-slack.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
