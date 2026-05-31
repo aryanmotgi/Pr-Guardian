@@ -67,3 +67,9 @@ PITCH ONLY — do NOT build: CVE trigger - multi-repo - the real learning/memory
 - docs/rules.md — the hardcoded rules + the 2 planted PRs.
 - docs/demo.md — the demo script + timings.
 Keep THIS file short. Read a doc when you need it.
+
+## Health Stack
+
+- typecheck: tsc --noEmit
+- lint: biome check .
+- test: node --test test/*.test.js
