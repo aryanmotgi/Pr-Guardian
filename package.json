@@ -11,6 +11,7 @@
     "receipt": "node src/run-receipt.js",
     "slack": "node src/run-slack.js",
     "slack:live": "node --env-file=.env src/run-slack.js",
+    "close": "node src/run-close-loop.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
