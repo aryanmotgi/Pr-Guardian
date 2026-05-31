@@ -211,7 +211,7 @@ async function runFixEngine(violation, { onEvent = noopEmit, pr = null } = {}) {
 		const lines = readResult.result.split("\n");
 		// ASSUMPTION: violation.line is 1-based
 		const insertIdx = Math.min(violation.line - 1, lines.length);
-		lines.splice(insertIdx, 0, violation.bad_code);
+		lines.splice(insertIdx, 1, violation.bad_code);
 		const injectedContent = lines.join("\n");
 
 		const writeInject = await sandbox.process.executeCommand(
