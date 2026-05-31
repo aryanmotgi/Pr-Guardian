@@ -105,7 +105,17 @@ function slackForOutcome(input) {
     prUrl,
     mention: config.slack.escalationMention,
     rule: input.violation?.rule,
+    severity: input.severity || deriveSeverity(input.violation?.rule),
   });
+}
+
+// Triage severity for an escalation. Honour an explicit input.severity from the
+// brain; otherwise infer from the rule — anything touching secrets/credentials
+// or sensitive PII is HIGH, everything else MEDIUM.
+function deriveSeverity(rule = "") {
+  return /secret|api key|password|card|pan|ssn|pii|credential|token/i.test(rule)
+    ? "high"
+    : "medium";
 }
 
 function validate(input) {

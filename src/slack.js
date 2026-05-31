@@ -68,14 +68,16 @@ export async function notifySlack({
   testsTotal,
   mention,
   rule,
+  severity,
 } = {}) {
   if (!summary || !prUrl) {
     throw new Error("notifySlack requires { summary, prUrl }");
   }
 
   if (outcome === "escalate") {
-    const text = `${mention ? mention + " " : ""}⚠️ Needs human review — caught a violation I couldn't auto-fix safely: ${summary} ${prUrl}`;
-    return sendSlack(text, buildEscalateBlocks({ summary, prUrl, mention, rule }));
+    const sev = severityLabel(severity);
+    const text = `${mention ? mention + " " : ""}⚠️ ${sev ? sev + " · " : ""}Needs human review — caught a violation I couldn't auto-fix safely: ${summary} ${prUrl}`;
+    return sendSlack(text, buildEscalateBlocks({ summary, prUrl, mention, rule, sev }));
   }
 
   if (outcome === "allow") {
@@ -88,10 +90,17 @@ export async function notifySlack({
   return sendSlack(text, buildMergedBlocks({ summary, prUrl, testsPassed, testsTotal }));
 }
 
+// Severity badge for escalations, so a human can triage at a glance.
+const SEVERITY = { high: "🔴 HIGH", medium: "🟠 MEDIUM", low: "🟡 LOW" };
+function severityLabel(severity) {
+  return SEVERITY[String(severity || "").toLowerCase()] || null;
+}
+
 // ESCALATE — a warning alert. The @-mention lives in both the fallback text and
 // the section so Slack actually notifies the human; the button is red (danger).
-function buildEscalateBlocks({ summary, prUrl, mention, rule }) {
-  const section = ["⚠️ *Needs human review — couldn't auto-fix safely*", summary];
+function buildEscalateBlocks({ summary, prUrl, mention, rule, sev }) {
+  const heading = `⚠️ *Needs human review — couldn't auto-fix safely*${sev ? `  ·  ${sev}` : ""}`;
+  const section = [heading, summary];
   if (mention) section.push(`${mention} — please take a look.`);
 
   const blocks = [{ type: "section", text: { type: "mrkdwn", text: section.join("\n") } }];

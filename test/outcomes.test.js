@@ -79,6 +79,10 @@ test("ESCALATE: @-mentions a human, alerts (not the green card), and does NOT me
   assert.doesNotMatch(msg.text, /Auto-fixed & merged/);
   const actions = msg.blocks.find((b) => b.type === "actions");
   assert.equal(actions.elements[0].style, "danger", "alert-styled (red) button");
+
+  // severity badge for triage — the fixture's rule mentions "secrets" → HIGH
+  assert.match(msg.text, /🔴 HIGH/, "tags the alert with a severity for triage");
+  assert.match(msg.blocks[0].text.text, /HIGH/);
 });
 
 test("ALLOW: posts a quiet receipt, does NOT merge, and sends NO alert (no @-mention)", async () => {
