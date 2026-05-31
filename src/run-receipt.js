@@ -18,6 +18,11 @@ const fake = {
     "This PR logged the full payment card number in src/payment.js, violating our rule against writing PANs to application logs (PCI-DSS).",
   changeSummary:
     "Masked the card number before logging so only the last 4 digits remain (****1234), matching how the rest of the codebase handles card data.",
+  diff: `--- a/src/payment.js
++++ b/src/payment.js
+@@ -15,7 +15,7 @@ function charge(card, amount) {
+-  console.log("Charging card " + card.number + " for " + amount);
++  console.log("Charging card ****" + card.number.slice(-4) + " for " + amount);`,
 };
 
 console.log(`\n=== PR Guardian · postReceipt · ${config.dryRun ? "DRY RUN" : "LIVE"} ===\n`);

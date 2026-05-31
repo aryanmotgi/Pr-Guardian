@@ -7,29 +7,49 @@ import { postComment } from "./github.js";
 // postReceipt — the close of the loop's visible proof. Formats a single,
 // skimmable comment (a senior engineer's note) and posts it on the PR.
 //
-//   input:  { owner, repo, prNumber, whyText, changeSummary }
+//   input:  { owner, repo, prNumber, whyText, changeSummary, diff? }
 //   output: the posted comment's URL (null in dry-run / without creds)
+//
+// `diff` is optional (a unified diff of the rewrite). When present it's shown in
+// a collapsible before/after block — the strongest proof the agent actually
+// changed code. Omitting it falls back to the plain receipt, so existing callers
+// are unaffected.
 //
 // Auth/Octokit/dry-run are reused from github.js via postComment — no second
 // GitHub setup here.
-export async function postReceipt({ owner, repo, prNumber, whyText, changeSummary }) {
-  const body = formatReceiptComment({ whyText, changeSummary });
+export async function postReceipt({ owner, repo, prNumber, whyText, changeSummary, diff }) {
+  const body = formatReceiptComment({ whyText, changeSummary, diff });
   const res = await postComment({ owner, repo, prNumber }, body);
   return res.url ?? null;
 }
 
 // The receipt markdown: short header + 2-4 skimmable lines — which decision was
-// violated (whyText), what changed to comply (changeSummary), tests green.
-export function formatReceiptComment({ whyText, changeSummary }) {
-  return [
+// violated (whyText), what changed to comply (changeSummary), tests green — plus
+// an optional collapsible before/after diff (the proof the code really changed).
+export function formatReceiptComment({ whyText, changeSummary, diff }) {
+  const lines = [
     "### 🛡️ PR Guardian — compliance fix applied",
     "",
     `**What was wrong:** ${whyText}`,
     `**What I changed:** ${changeSummary}`,
     "**Verification:** ✅ Tests pass in an isolated sandbox before merge.",
-    "",
-    "<sub>Autonomous receipt from PR Guardian · any maintainer can revert this.</sub>",
-  ].join("\n");
+  ];
+
+  if (diff && diff.trim()) {
+    lines.push(
+      "",
+      "<details><summary>📝 Before / after — view the change</summary>",
+      "",
+      "```diff",
+      diff.trim(),
+      "```",
+      "",
+      "</details>"
+    );
+  }
+
+  lines.push("", "<sub>Autonomous receipt from PR Guardian · any maintainer can revert this.</sub>");
+  return lines.join("\n");
 }
 
 const DECISION_HEADERS = {

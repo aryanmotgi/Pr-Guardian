@@ -62,4 +62,16 @@ test("formatReceiptComment is skimmable: a header plus 2-4 detail lines", () => 
   assert.match(body, /What was wrong:/);
   assert.match(body, /What I changed:/);
   assert.match(body, /Verification:/);
+  assert.doesNotMatch(body, /```diff/, "no diff block when no diff is given");
+});
+
+test("formatReceiptComment embeds a collapsible before/after diff when provided", () => {
+  const body = formatReceiptComment({
+    whyText: "Violated the no-PAN-in-logs rule.",
+    changeSummary: "Masked the card number.",
+    diff: "- console.log(card.number)\n+ console.log('****' + card.number.slice(-4))",
+  });
+  assert.match(body, /<details>/, "diff is collapsible");
+  assert.match(body, /```diff/, "renders a diff code block");
+  assert.match(body, /card\.number\.slice\(-4\)/, "shows the actual rewrite");
 });
