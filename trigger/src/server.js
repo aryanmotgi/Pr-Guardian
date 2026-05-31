@@ -62,6 +62,25 @@ app.post('/trigger', (req, res) => {
   processPR(pr).catch(err => console.error('Pipeline error:', err));
 });
 
+// Friendly landing page so the URL shows something when opened in a browser
+app.get('/', (_req, res) => {
+  res.type('html').send(`
+    <html>
+      <head><title>PR Guardian — Trigger</title></head>
+      <body style="font-family: system-ui, sans-serif; max-width: 640px; margin: 60px auto; padding: 0 20px;">
+        <h1>🛡️ PR Guardian — Trigger & Decision</h1>
+        <p>This service is <strong>live</strong>. It listens for GitHub pull requests, reads the diff, and judges each one against the security rules.</p>
+        <ul>
+          <li><code>POST /webhook</code> — GitHub PR events (signature-verified)</li>
+          <li><code>POST /trigger</code> — manual backup trigger</li>
+          <li><code>GET /health</code> — status check</li>
+        </ul>
+        <p style="color:#666;">Status: running ✅</p>
+      </body>
+    </html>
+  `);
+});
+
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 async function processPR(pr) {
