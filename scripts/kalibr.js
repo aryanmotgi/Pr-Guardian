@@ -9,9 +9,8 @@
 
 require("dotenv").config();
 
-// ASSUMPTION: @kalibr/sdk exports Router as a named CJS export.
-//   Verified at runtime: Object.keys(require('@kalibr/sdk')) includes 'Router'.
-const { Router } = require("@kalibr/sdk");
+// Verified: Object.keys(require('@kalibr/sdk')) includes 'Router' and 'KalibrIntelligence'.
+const { Router, KalibrIntelligence } = require("@kalibr/sdk");
 
 let _router = null;
 
@@ -25,8 +24,14 @@ function getKalibrRouter() {
 	}
 	if (_router) return _router;
 
-	// ASSUMPTION: Router reads KALIBR_API_KEY and KALIBR_TENANT_ID from env
-	// automatically — no apiKey constructor param in the TypeScript types.
+	// KalibrIntelligence must be initialized before Router uses it internally.
+	// init() reads KALIBR_API_KEY + KALIBR_TENANT_ID from env when not passed explicitly.
+	if (!KalibrIntelligence.isInitialized()) {
+		KalibrIntelligence.init({
+			apiKey: process.env.KALIBR_API_KEY,
+			tenantId: process.env.KALIBR_TENANT_ID || undefined,
+		});
+	}
 
 	// ASSUMPTION: "claude-sonnet-4-6" is a valid Kalibr path identifier.
 	//   Docs example uses "claude-sonnet-4-20250514". If routing fails with
