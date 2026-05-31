@@ -75,20 +75,26 @@ async function runFromContract(pr = {}, result = {}) {
 
   // 3) Build the content from result + violation, with safe fallbacks.
   const reason = violation.reason || result.reason || result.whyText;
+  // Smart human-facing fallback when the fix engine sends no text: prefer the
+  // violation's reason, then name the offending file, else null (callers add a
+  // generic last resort). Never a bare "(unspecified)" when we know the file.
+  const violationDesc =
+    reason || (violation.file ? `a potential issue in ${violation.file}` : null);
+
   const diff = buildDiff(result);
   const changeSummary =
-    result.changeSummary || result.summary || (diff ? "Applied an automated fix to comply." : "Reviewed against the rules.");
+    result.changeSummary || result.summary || violationDesc || "Applied an automated fix.";
   const timeMs = numberOrUndefined(result.time_ms ?? result.timeMs);
 
   let whyText;
   if (outcome === "escalate") {
     whyText = gateReason
       ? `A fix was produced but ${gateReason}, so it can't be safely merged — a human should verify.`
-      : reason || result.why || "Couldn't auto-fix this safely — needs human review.";
+      : result.why || violationDesc || "Couldn't auto-fix this safely — needs human review.";
   } else if (outcome === "allow") {
-    whyText = reason || result.why || "Reviewed — compliant, no action needed.";
+    whyText = result.why || violationDesc || "Reviewed — compliant, no action needed.";
   } else {
-    whyText = reason || result.why || "Auto-fixed to comply with the rule.";
+    whyText = result.why || violationDesc || "Auto-fixed to comply with the rule.";
   }
 
   // 4) Map onto runMergeStage's input contract and delegate.
@@ -97,7 +103,7 @@ async function runFromContract(pr = {}, result = {}) {
     repo: { owner, name: repo },
     pr: { number, url, title: pr.title },
     violation: {
-      rule: reason || "(unspecified)",
+      rule: violationDesc || "(unspecified)",
       file: violation.file,
       line: violation.line,
       description: violation.reason || reason,
