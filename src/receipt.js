@@ -107,6 +107,10 @@ export function buildReceipt(input) {
   if (decision === "fix" && fix) {
     lines.push("### What we did");
     if (fix.summary) lines.push(fix.summary);
+    if (Number.isFinite(fix.timeMs)) {
+      lines.push("");
+      lines.push(`_Fixed in ${(fix.timeMs / 1000).toFixed(1)}s._`);
+    }
     if (fix.why) {
       lines.push("");
       lines.push(`**Why this is safe:** ${fix.why}`);
