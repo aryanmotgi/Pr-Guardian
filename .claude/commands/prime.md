@@ -1,0 +1,1 @@
+Read CLAUDE.md, then read docs/rules.md and docs/sponsors.md. In a few sentences tell me: what we're building, the core loop, my role and what I own, and the single most useful thing I should work on next. Don't write any code yet — just get oriented.

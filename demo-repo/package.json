@@ -1,0 +1,17 @@
+{
+  "name": "acme-payments",
+  "version": "1.0.0",
+  "description": "Minimal fintech payment service (demo target for PR Guardian)",
+  "main": "src/server.js",
+  "scripts": {
+    "test": "jest --forceExit",
+    "dev": "node src/server.js"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["**/tests/**/*.test.js"]
+  }
+}

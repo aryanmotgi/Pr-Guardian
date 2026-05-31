@@ -1,0 +1,18 @@
+# Sponsor docs — fetch BEFORE writing any integration code
+
+The sponsor SDKs are NOT reliably in Claude's training data. Before writing integration code, WebFetch the official docs and work from what you read. Do not guess methods, params, or endpoints. Paste the real URL next to each as you find it.
+
+## Core (building with these)
+- Daytona — isolated sandboxes.   Docs: 
+- Kalibr — orchestration + retry. Docs: 
+- Insforge — backend/DB/auth/event. Docs: 
+- Tigris — S3-compatible storage.  Docs: 
+- Render — hosting.               Docs: 
+
+## Also used
+- GitHub API (Octokit).  Docs: 
+- Anthropic API (Claude). Docs: 
+- Slack API.             Docs: 
+
+## Bonus (pitch-only unless core loop done)
+Opsera, NEAR AI, Brain2, Apify, Rtrvr.ai, Nebius, Lightsprint.ai
