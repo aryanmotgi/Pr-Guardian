@@ -13,6 +13,7 @@
     "lint": "biome check .",
     "sandbox:test": "node scripts/sandbox-test.js",
     "fix:engine": "node scripts/fix-engine.js",
+    "demo:pr1": "node scripts/demo-trigger.js",
     "start": "node scripts/server.js",
     "server": "node scripts/server.js",
     "demo": "node src/run-demo.js",

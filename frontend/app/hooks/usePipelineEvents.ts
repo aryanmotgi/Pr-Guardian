@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useReducer, useRef } from "react";
-import type { PipelineEvent, PRRun, PipelineStep, StepState } from "@/app/types";
+import { useEffect, useReducer } from "react";
+import type { PipelineEvent, PRRun, PipelineStep, StepState, Decision } from "@/app/types";
 
 const BACKEND = "https://pr-guardian-fix-engine.onrender.com";
 export const ENDPOINTS = {
@@ -9,17 +9,25 @@ export const ENDPOINTS = {
   health: `${BACKEND}/health`,
 } as const;
 
+// Hardcoded demo violation — what the backup buttons fire against Render
+const DEMO_VIOLATION = {
+  pr:        { owner: "ssmoney1", repo: "acme-payments", number: 3, title: "feat: add payment debug logging" },
+  violation: { file: "src/payment.js", reason: "logs full card number", line: 23, bad_code: "    cardNumber: pan," },
+};
+
 const STEPS: PipelineStep[] = ["trigger", "decide", "fix", "test", "retry", "merge", "receipt", "slack"];
 
-function blankRun(runId: string, prNumber: number): PRRun {
+function blankRun(runId: string, prNumber: number, prTitle?: string): PRRun {
   const steps = Object.fromEntries(
     STEPS.map((s) => [s, { status: "pending", message: "" } satisfies StepState])
   ) as Record<PipelineStep, StepState>;
   return {
     id: runId,
     prNumber,
-    prTitle: prNumber === 1 ? "feat: add payment logging (REAL violation)" : "test: use standard Stripe test card (decoy)",
-    branch: prNumber === 1 ? "feat/payment-logging" : "test/stripe-card",
+    prTitle: prTitle ?? (prNumber === 1
+      ? "feat: add payment debug logging (REAL violation)"
+      : "test: use standard Stripe test card (decoy)"),
+    branch: prNumber === 1 ? "demo/violation" : "demo/decoy",
     startedAt: new Date().toISOString(),
     decision: null,
     steps,
@@ -27,15 +35,107 @@ function blankRun(runId: string, prNumber: number): PRRun {
   };
 }
 
-type State = { runs: PRRun[] };
+type DispatchEvent = PipelineEvent & { prNumber?: number; prTitle?: string };
 
-function reducer(state: State, event: PipelineEvent & { prNumber?: number }): State {
+// Map Render's event format → frontend PipelineEvent format
+function normalizeRenderEvent(raw: Record<string, unknown>): DispatchEvent[] {
+  const runId = (raw.jobId as string | undefined) ?? (raw.runId as string | undefined) ?? "";
+  if (!runId) return [];
+  const prNumber = (raw.pr as { number?: number } | undefined)?.number ?? 1;
+  const prTitle  = (raw.pr as { title?: string }  | undefined)?.title;
+  const status   = raw.status as string | undefined;
+  const ev       = raw.event  as string | undefined;
+  const base     = { runId, prNumber, prTitle };
+
+  switch (ev) {
+    case "job_accepted":
+      return [{ ...base, type: "step", step: "trigger", status: "pass", message: "Webhook received — PR opened" }];
+
+    case "sandbox_create":
+      if (status === "starting") return [{ ...base, type: "step", step: "decide", status: "running", message: "Analyzing violation…" }];
+      if (status === "ready")    return [
+        { ...base, type: "step", step: "decide", status: "pass",    message: "HIGH confidence — card PAN in logs" },
+        { ...base, type: "step", step: "fix",    status: "running", message: "Sandbox ready" },
+      ];
+      return [];
+
+    case "clone":
+      return status === "starting"
+        ? [{ ...base, type: "step", step: "fix", status: "running", message: "Cloning repo…" }]
+        : [];
+
+    case "install":
+      return status === "starting"
+        ? [{ ...base, type: "step", step: "fix", status: "running", message: "Installing deps…" }]
+        : [];
+
+    case "inject":
+      return [{ ...base, type: "step", step: "fix", status: "running", message: `Injecting violation at line ${raw.line}` }];
+
+    case "attempt_start":
+      return [{ ...base, type: "step", step: "fix", status: "running", message: `Attempt ${raw.attempt}/${raw.max} — asking Claude…` }];
+
+    case "claude_call":
+      if (status === "done") {
+        const fix = raw.fix as string | undefined;
+        return [{ ...base, type: "step", step: "fix", status: "running", message: "Claude wrote fix", detail: fix?.slice(0, 100) }];
+      }
+      return [];
+
+    case "test":
+      return status === "starting"
+        ? [{ ...base, type: "step", step: "test", status: "running", message: "Running tests in sandbox…" }]
+        : [];
+
+    case "attempt_end": {
+      const passed    = status === "passed";
+      const fixDetail = (raw.fix_applied as string | undefined)?.slice(0, 100);
+      if (passed) return [
+        { ...base, type: "step", step: "test", status: "pass",    message: "All tests GREEN", detail: fixDetail },
+        { ...base, type: "step", step: "fix",  status: "pass",    message: "Fix verified in sandbox" },
+      ];
+      return [
+        { ...base, type: "step", step: "test",  status: "fail",    message: "Tests FAILED — self-correcting…" },
+        { ...base, type: "step", step: "retry", status: "running", message: "Asking Claude again with failure context" },
+      ];
+    }
+
+    case "done":
+      if (status === "escalated") return [
+        { ...base, type: "step",     step: "fix", status: "fail", message: (raw.reason as string) ?? "Max attempts reached" },
+        { ...base, type: "decision", decision: "escalate" as Decision },
+      ];
+      return [];
+
+    case "close_loop":
+      if (status === "starting") return [{ ...base, type: "step", step: "merge", status: "running", message: "Merging fix via GitHub API…" }];
+      if (status === "done") {
+        const r      = raw.result as Record<string, unknown> | undefined;
+        const merged = r?.merged as boolean | undefined;
+        if (merged) return [
+          { ...base, type: "step", step: "merge",   status: "pass", message: "Fix merged to main" },
+          { ...base, type: "step", step: "receipt", status: "pass", message: "Receipt comment posted on PR" },
+          { ...base, type: "step", step: "slack",   status: "pass", message: "Slack ping sent to #security-alerts" },
+        ];
+        return [{ ...base, type: "step", step: "merge", status: "fail", message: "Merge failed — escalating to human" }];
+      }
+      if (status === "error") return [{ ...base, type: "step", step: "merge", status: "fail", message: (raw.message as string) ?? "Close loop error" }];
+      return [];
+
+    case "job_complete":
+      return [{ ...base, type: "done", message: "Pipeline complete" }];
+
+    default:
+      return [];
+  }
+}
+
+function reducer(state: { runs: PRRun[] }, event: DispatchEvent): { runs: PRRun[] } {
   const { runs } = state;
   const idx = runs.findIndex((r) => r.id === event.runId);
 
   if (idx === -1) {
-    // New run
-    const run = blankRun(event.runId, event.prNumber ?? 1);
+    const run = blankRun(event.runId, event.prNumber ?? 1, event.prTitle);
     return { runs: [run, ...runs].slice(0, 10) };
   }
 
@@ -61,27 +161,36 @@ function reducer(state: State, event: PipelineEvent & { prNumber?: number }): St
 
 export function usePipelineEvents() {
   const [state, dispatch] = useReducer(reducer, { runs: [] });
-  const pendingRunMeta = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     const es = new EventSource(ENDPOINTS.events);
+
     es.onmessage = (e) => {
-      const event: PipelineEvent = JSON.parse(e.data);
-      const prNumber = pendingRunMeta.current.get(event.runId) ?? 1;
-      dispatch({ ...event, prNumber });
+      try {
+        const raw = JSON.parse(e.data) as Record<string, unknown>;
+        if (typeof raw.event === "string") {
+          // Render backend event — normalize
+          normalizeRenderEvent(raw).forEach((ev) => dispatch(ev));
+        } else if (typeof raw.type === "string") {
+          // Legacy simulated event from local /api/events
+          dispatch(raw as unknown as DispatchEvent);
+        }
+      } catch {
+        // ignore parse errors
+      }
     };
+
     return () => es.close();
   }, []);
 
   async function trigger(prNumber: number) {
-    const res = await fetch(ENDPOINTS.fix, {
+    // Backup button — fires real Render backend with demo violation payload
+    await fetch(ENDPOINTS.fix, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prNumber }),
+      body: JSON.stringify(DEMO_VIOLATION),
     });
-    const { runId } = await res.json();
-    pendingRunMeta.current.set(runId, prNumber);
-    dispatch({ type: "step", runId, prNumber, step: "trigger", status: "running", message: "Starting…" });
+    // No runId from POST — SSE on /events will deliver job_accepted which creates the run
   }
 
   return { runs: state.runs, trigger };
