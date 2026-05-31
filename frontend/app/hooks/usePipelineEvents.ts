@@ -4,7 +4,7 @@ import type { PipelineEvent, PRRun, PipelineStep, StepState, Decision } from "@/
 
 const BACKEND = "https://pr-guardian-fix-engine.onrender.com";
 export const ENDPOINTS = {
-  events: `${BACKEND}/events`,
+  events: "/api/events",          // proxied server-side — no CORS
   fix:    `${BACKEND}/fix`,
   health: `${BACKEND}/health`,
 } as const;
