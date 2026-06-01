@@ -31,6 +31,7 @@ When verdict is "violation", also pinpoint exactly where the problem is:
 - "line": the line number in the NEW version of the file where the bad code is. Read the diff hunk header (e.g. "@@ -20,6 +20,7 @@" means the new block starts at line 20) and count down through the context/added lines to find it. If you cannot determine it, use null.
 - "bad_code": the exact offending line of code, copied verbatim from the diff (without the leading "+").
 
+/no_think
 Respond with ONLY valid JSON in this exact format, no explanation outside the JSON:
 {
   "verdict": "violation" | "false-alarm" | "unsure",
@@ -47,7 +48,10 @@ Respond with ONLY valid JSON in this exact format, no explanation outside the JS
 		messages: [{ role: "user", content: prompt }],
 	});
 
-	const text = message.choices[0].message.content.trim();
+	const msg = message.choices[0].message;
+	const raw = msg.content ?? msg.reasoning_content ?? null;
+	if (!raw) throw new Error("NEAR AI returned null content");
+	const text = raw.trim();
 
 	// Strip markdown code fences if present
 	const jsonText = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
