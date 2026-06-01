@@ -1,6 +1,7 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
 import type { PipelineStep, StepState, StepStatus } from "@/app/types";
 
 const STEP_META: Record<PipelineStep, { label: string; emoji: string }> = {
@@ -60,13 +61,24 @@ export function StepRow({
   isLast: boolean;
 }) {
   const { label } = STEP_META[step];
-  const isRetry = step === "retry";
+  const isRetry   = step === "retry";
   const isPending = state.status === "pending" && !state.message;
   const isRunning = state.status === "running";
 
+  // Flash red when test step transitions to fail
+  const prevStatus = useRef(state.status);
+  const [flashing, setFlashing] = useState(false);
+  useEffect(() => {
+    if (step === "test" && prevStatus.current !== "fail" && state.status === "fail") {
+      setFlashing(true);
+      setTimeout(() => setFlashing(false), 1200);
+    }
+    prevStatus.current = state.status;
+  }, [state.status, step]);
+
   const rowVariants = {
-    hidden: { opacity: 0, x: -6 },
-    visible: { opacity: 1, x: 0, transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] } },
+    hidden:   { opacity: 0, x: -6 },
+    visible:  { opacity: 1, x: 0, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } },
   };
 
   return (
@@ -74,8 +86,21 @@ export function StepRow({
       variants={rowVariants}
       initial="hidden"
       animate="visible"
-      className="flex gap-3"
+      className="flex gap-3 relative"
     >
+      {/* Flash overlay — only on test fail */}
+      <AnimatePresence>
+        {flashing && (
+          <motion.div
+            key="flash"
+            className="absolute inset-0 rounded-lg pointer-events-none"
+            initial={{ opacity: 0.55, backgroundColor: "#ef4444" }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.1, ease: "easeOut" }}
+          />
+        )}
+      </AnimatePresence>
       {/* Track + dot column */}
       <div className="flex flex-col items-center">
         <StepDot status={state.status} isRetry={isRetry} />
@@ -98,8 +123,10 @@ export function StepRow({
       </div>
 
       {/* Content column */}
-      <div
-        className={`pb-4 flex-1 min-w-0 ${isLast ? "pb-1" : ""} ${isPending ? "opacity-35" : ""}`}
+      <motion.div
+        animate={{ opacity: isPending ? 0.3 : 1 }}
+        transition={{ duration: 0.4 }}
+        className={`pb-4 flex-1 min-w-0 ${isLast ? "pb-1" : ""}`}
       >
         <div className="flex items-baseline gap-2 flex-wrap">
           <span
@@ -152,7 +179,7 @@ export function StepRow({
             └ {state.detail}
           </p>
         )}
-      </div>
+      </motion.div>
     </motion.div>
   );
 }

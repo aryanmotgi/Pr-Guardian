@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useReducer } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { PipelineEvent, PRRun, PipelineStep, StepState, Decision } from "@/app/types";
 
 const BACKEND = "https://pr-guardian-fix-engine.onrender.com";
@@ -159,6 +159,23 @@ function reducer(state: { runs: PRRun[] }, event: DispatchEvent): { runs: PRRun[
 
 export function usePipelineEvents() {
   const [state, dispatch] = useReducer(reducer, { runs: [] });
+  const queueRef    = useRef<DispatchEvent[]>([]);
+  const drainingRef = useRef(false);
+
+  const drainNext = useCallback(() => {
+    const ev = queueRef.current.shift();
+    if (!ev) { drainingRef.current = false; return; }
+    dispatch(ev);
+    setTimeout(drainNext, 500);
+  }, []);
+
+  const enqueue = useCallback((ev: DispatchEvent) => {
+    queueRef.current.push(ev);
+    if (!drainingRef.current) {
+      drainingRef.current = true;
+      setTimeout(drainNext, 80);
+    }
+  }, [drainNext]);
 
   useEffect(() => {
     const es = new EventSource(ENDPOINTS.events);
@@ -167,11 +184,9 @@ export function usePipelineEvents() {
       try {
         const raw = JSON.parse(e.data) as Record<string, unknown>;
         if (typeof raw.event === "string") {
-          // Render backend event — normalize
-          normalizeRenderEvent(raw).forEach((ev) => dispatch(ev));
+          normalizeRenderEvent(raw).forEach(enqueue);
         } else if (typeof raw.type === "string") {
-          // Legacy simulated event from local /api/events
-          dispatch(raw as unknown as DispatchEvent);
+          enqueue(raw as unknown as DispatchEvent);
         }
       } catch {
         // ignore parse errors
@@ -179,7 +194,7 @@ export function usePipelineEvents() {
     };
 
     return () => es.close();
-  }, []);
+  }, [enqueue]);
 
   async function trigger(prNumber: number) {
     // Backup button — fires real Render backend with demo violation payload
