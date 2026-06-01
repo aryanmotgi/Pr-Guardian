@@ -51,12 +51,12 @@ Respond with ONLY valid JSON in this exact format, no explanation outside the JS
 	const msg = message.choices[0].message;
 	const raw = msg.content ?? msg.reasoning_content ?? null;
 	if (!raw) throw new Error("NEAR AI returned null content");
-	const text = raw.trim();
 
-	// Strip markdown code fences if present
-	const jsonText = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+	// Qwen3 thinking mode prepends reasoning text — extract the JSON object directly
+	const jsonMatch = raw.match(/\{[\s\S]*\}/);
+	if (!jsonMatch) throw new Error(`No JSON found in response: ${raw.slice(0, 200)}`);
 
-	const result = JSON.parse(jsonText);
+	const result = JSON.parse(jsonMatch[0]);
 
 	if (!["violation", "false-alarm", "unsure"].includes(result.verdict)) {
 		throw new Error(`Unexpected verdict: ${result.verdict}`);
