@@ -32,15 +32,19 @@ When verdict is "violation", also pinpoint exactly where the problem is:
 - "line": the line number in the NEW version of the file where the bad code is. Read the diff hunk header (e.g. "@@ -20,6 +20,7 @@" means the new block starts at line 20) and count down through the context/added lines to find it. If you cannot determine it, use null.
 - "bad_code": the exact offending line of code, copied verbatim from the diff (without the leading "+").
 
-Respond with ONLY valid JSON in this exact format, no explanation outside the JSON:
+Respond with ONLY valid JSON, no explanation outside the JSON. Use exactly this structure:
 {
-  "verdict": "violation" | "false-alarm" | "unsure",
-  "confidence": "high" | "low",
+  "verdict": "violation",
+  "confidence": "high",
   "reason": "one sentence explaining the decision",
-  "file": "the filename where the issue was found, or null",
+  "file": "src/example.js",
   "line": 23,
-  "bad_code": "the exact bad line of code, or null"
-}`;
+  "bad_code": "the exact bad line of code"
+}
+
+verdict must be one of: violation, false-alarm, unsure
+confidence must be one of: high, low
+file and bad_code must be null when verdict is not violation`;
 
 	const message = await client.chat.completions.create({
 		model: "Qwen/Qwen3.5-122B-A10B",
