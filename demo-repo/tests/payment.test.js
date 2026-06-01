@@ -39,4 +39,16 @@ describe('processPayment', () => {
   test('throws on negative amount', () => {
     expect(() => processPayment({ cardNumber: '5555555555554444', amount: -5 })).toThrow('Invalid amount');
   });
+
+  test('never logs the full PAN', () => {
+    const pan = '4111111111111111';
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      processPayment({ cardNumber: pan, amount: 50 });
+      const output = logSpy.mock.calls.flat().map(String).join(' ');
+      expect(output).not.toContain(pan);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
 });

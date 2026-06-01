@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: pr-guardian-fix-engine
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: npm install --legacy-peer-deps
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DAYTONA_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TIGRIS_ACCESS_KEY_ID
+        sync: false
+      - key: TIGRIS_SECRET_ACCESS_KEY
+        sync: false
+      - key: TIGRIS_BUCKET_NAME
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      - key: DRY_RUN
+        sync: false
+      - key: SLACK_ESCALATION_MENTION
+        sync: false

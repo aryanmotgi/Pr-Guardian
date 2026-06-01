@@ -1,21 +1,55 @@
 {
-  "name": "pr-guardian-merge",
-  "version": "0.1.0",
-  "description": "PR Guardian — merge + receipt + notifications stage (Kaushik)",
+  "name": "pr-guardian",
+  "version": "1.0.0",
+  "description": "PR Guardian — autonomous PR-guarding agent (hackathon).",
   "type": "module",
   "main": "src/index.js",
+  "directories": {
+    "doc": "docs"
+  },
   "scripts": {
+    "test": "node --test test/*.test.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "sandbox:test": "node scripts/sandbox-test.js",
+    "fix:engine": "node scripts/fix-engine.js",
+    "demo:pr1": "node scripts/demo-trigger.js",
+    "start": "node scripts/server.js",
+    "server": "node scripts/server.js",
     "demo": "node src/run-demo.js",
     "demo:allow": "node src/run-demo.js allow",
     "demo:escalate": "node src/run-demo.js escalate",
     "receipt": "node src/run-receipt.js",
     "slack": "node src/run-slack.js",
     "slack:live": "node --env-file=.env src/run-slack.js",
-    "close": "node src/run-close-loop.js",
-    "test": "node --test test/*.test.js"
+    "close": "node src/run-close-loop.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aryanmotgi/Pr-Guardian.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/aryanmotgi/Pr-Guardian/issues"
+  },
+  "homepage": "https://github.com/aryanmotgi/Pr-Guardian#readme",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.100.1",
+    "@aws-sdk/client-s3": "^3.1057.0",
+    "@daytona/sdk": "^0.183.0",
+    "@insforge/sdk": "latest",
+    "@kalibr/sdk": "^1.14.1",
     "@octokit/rest": "^21.1.1",
-    "@slack/web-api": "^7.9.1"
+    "@slack/web-api": "^7.9.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
+    "knip": "^6.15.0",
+    "typescript": "^6.0.3"
   }
 }
