@@ -6,45 +6,45 @@
 // imports, so this lets tests (and a live runner) set DRY_RUN / GITHUB_TOKEN
 // before the values are used. App behavior is unchanged.
 export const config = {
-  // When true (the default), no real GitHub/Slack calls are made — the stage
-  // logs exactly what it WOULD do. Set DRY_RUN=false (with creds) to go live.
-  get dryRun() {
-    return process.env.DRY_RUN !== "false";
-  },
+	// When true (the default), no real GitHub/Slack calls are made — the stage
+	// logs exactly what it WOULD do. Set DRY_RUN=false (with creds) to go live.
+	get dryRun() {
+		return process.env.DRY_RUN !== "false";
+	},
 
-  github: {
-    get token() {
-      return process.env.GITHUB_TOKEN || null;
-    },
-    // ASSUMPTION: "squash" merge for a clean history on the demo repo.
-    // Octokit accepts "merge" | "squash" | "rebase". Verify with the team.
-    get mergeMethod() {
-      return process.env.GITHUB_MERGE_METHOD || "squash";
-    },
-  },
+	github: {
+		get token() {
+			return process.env.GITHUB_TOKEN || null;
+		},
+		// ASSUMPTION: "squash" merge for a clean history on the demo repo.
+		// Octokit accepts "merge" | "squash" | "rebase". Verify with the team.
+		get mergeMethod() {
+			return process.env.GITHUB_MERGE_METHOD || "squash";
+		},
+	},
 
-  slack: {
-    get token() {
-      return process.env.SLACK_BOT_TOKEN || null;
-    },
-    get channel() {
-      return process.env.SLACK_CHANNEL || null;
-    },
-    // Who to @-mention when a violation is escalated to a human. A real Slack
-    // mention is "<@USERID>" or a group "<!subteam^ID>"; "<!here>" pings active
-    // channel members. Override via SLACK_ESCALATION_MENTION.
-    get escalationMention() {
-      return process.env.SLACK_ESCALATION_MENTION || "<!here>";
-    },
-  },
+	slack: {
+		get token() {
+			return process.env.SLACK_BOT_TOKEN || null;
+		},
+		get channel() {
+			return process.env.SLACK_CHANNEL || null;
+		},
+		// Who to @-mention when a violation is escalated to a human. A real Slack
+		// mention is "<@USERID>" or a group "<!subteam^ID>"; "<!here>" pings active
+		// channel members. Override via SLACK_ESCALATION_MENTION.
+		get escalationMention() {
+			return process.env.SLACK_ESCALATION_MENTION || "<!here>";
+		},
+	},
 };
 
 // True only if we have what we need to make real GitHub calls.
 export function canCallGithub() {
-  return Boolean(config.github.token);
+	return Boolean(config.github.token);
 }
 
 // True only if we have what we need to make real Slack calls.
 export function canCallSlack() {
-  return Boolean(config.slack.token && config.slack.channel);
+	return Boolean(config.slack.token && config.slack.channel);
 }
