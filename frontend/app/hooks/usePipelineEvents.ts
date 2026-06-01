@@ -151,7 +151,16 @@ function reducer(state: { runs: PRRun[] }, event: DispatchEvent): { runs: PRRun[
     run.done = true;
   }
 
-  if (idx === -1) return { runs: [run, ...runs].slice(0, 10) };
+  if (idx === -1) {
+    // Replace any existing run for the same prNumber — one card per PR
+    const existing = runs.findIndex((r) => r.prNumber === (event.prNumber ?? 1));
+    if (existing !== -1) {
+      const next = [...runs];
+      next[existing] = run;
+      return { runs: next };
+    }
+    return { runs: [run, ...runs].slice(0, 5) };
+  }
   const next = [...runs];
   next[idx] = run;
   return { runs: next };
