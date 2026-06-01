@@ -1,11 +1,7 @@
-const { OpenAI } = require("openai");
+const Anthropic = require("@anthropic-ai/sdk");
 const { getRules, logJudgment } = require("./insforge");
 
-// NEAR Private Inference — PR diffs processed inside hardware-secured TEE enclaves.
-const client = new OpenAI({
-	baseURL: "https://cloud-api.near.ai/v1",
-	apiKey: process.env.NEAR_AI_API_KEY,
-});
+const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 async function judge(diff) {
 	const ruleDescriptions = await getRules();
@@ -46,17 +42,13 @@ verdict must be one of: violation, false-alarm, unsure
 confidence must be one of: high, low
 file and bad_code must be null when verdict is not violation`;
 
-	const message = await client.chat.completions.create({
-		model: "Qwen/Qwen3.5-122B-A10B",
-		max_tokens: 2048,
+	const message = await client.messages.create({
+		model: "claude-haiku-4-5-20251001",
+		max_tokens: 512,
 		messages: [{ role: "user", content: prompt }],
 	});
 
-	const msg = message.choices[0].message;
-	const raw = msg.content ?? msg.reasoning_content ?? null;
-	if (!raw) throw new Error("NEAR AI returned null content");
-
-	// Qwen3 thinking mode prepends reasoning text — extract the JSON object directly
+	const raw = message.content[0].text.trim();
 	const jsonMatch = raw.match(/\{[\s\S]*\}/);
 	if (!jsonMatch) throw new Error(`No JSON found in response: ${raw.slice(0, 200)}`);
 
