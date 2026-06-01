@@ -126,7 +126,7 @@ async function runFromContract(pr = {}, result = {}) {
     repo: { owner, name: repo },
     pr: { number, url, title: pr.title },
     violation: {
-      rule: opseraReason ? "Opsera compliance gate" : violationDesc || "(unspecified)",
+      rule: opseraReason ? "Opsera compliance gate" : violation.rule || violationDesc || "(unspecified)",
       file: violation.file,
       line: violation.line,
       description: opseraReason ? opseraDetail || opseraReason : violation.reason || reason,

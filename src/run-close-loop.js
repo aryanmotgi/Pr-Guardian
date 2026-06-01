@@ -19,7 +19,8 @@ const scenarios = {
       violation: {
         file: "src/payment.js",
         line: 18,
-        reason: "Logs the full payment card number (PAN) — violates our no-PAN-in-logs rule",
+        rule: "PCI-DSS: never log a raw payment card number (PAN)",
+        reason: "Writes the full card number to the logs on every charge",
         bad_code: 'console.log("Charging card " + card.number)',
       },
     },
@@ -28,6 +29,7 @@ const scenarios = {
       escalate: false,
       time_ms: 8200,
       tests: { passed: 6, total: 6 },
+      summary: "Masked the card number — only the last 4 digits are logged now",
       before: 'console.log("Charging card " + card.number + " for " + amount);',
       after: 'console.log("Charging card ****" + card.number.slice(-4) + " for " + amount);',
     },
@@ -42,10 +44,16 @@ const scenarios = {
       violation: {
         file: "tests/checkout.test.js",
         line: 7,
-        reason: "4242 4242 4242 4242 is a well-known fake test card used as fixture data — not a real leak",
+        rule: "No full payment card numbers (PANs) in source",
+        reason: "Contains the digits 4242 4242 4242 4242",
       },
     },
-    result: { outcome: "allow", time_ms: 1500, tests: { passed: 6, total: 6 } },
+    result: {
+      outcome: "allow",
+      time_ms: 1500,
+      tests: { passed: 6, total: 6 },
+      why: "4242 4242 4242 4242 is a well-known fake test card used as fixture data inside a *.test.js file — not a real card and not a real leak. Fixing it would break the test.",
+    },
   },
 
   escalate: {
@@ -57,12 +65,17 @@ const scenarios = {
       violation: {
         file: "src/server.js",
         line: 31,
-        reason: "Possible hardcoded secret / API key committed in source",
+        rule: "No hardcoded secrets / API keys committed in source",
+        reason: "A high-entropy string is assigned to `const KEY`",
         bad_code: 'const KEY = "sk-live-..."',
       },
     },
     // gave up after 3 attempts → escalate:true; no tests → must not merge anyway
-    result: { escalate: true, time_ms: 12000 },
+    result: {
+      escalate: true,
+      time_ms: 12000,
+      why: "Can't tell if this is a live secret or a placeholder — removing a real config value could break the service, so it's below the bar to act automatically. A human should decide.",
+    },
   },
 };
 

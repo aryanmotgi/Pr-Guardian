@@ -87,32 +87,49 @@ function slackForOutcome(input) {
   const ref = `${input.repo.owner}/${input.repo.name}#${input.pr.number}`;
   const prUrl = input.pr?.url || ref;
   const location = locationOf(input.violation);
+  const v = input.violation || {};
+  const file = v.file || null;
 
   if (input.decision === "fix") {
-    const rule = input.violation?.rule || "rule violation";
-    const change = input.fix?.summary;
-    // Avoid "reason — reason" when the fix engine sent no distinct summary.
-    const summary = change && change !== rule ? `${rule} — ${change}` : rule;
-    // Include a compact before/after so the reader gets the change in Slack.
-    return notifySlack({ summary, prUrl, location, change: compactChange(input.fix?.diff) });
+    // summary = what the fix DID; problem = what the bad code did; rule = the
+    // policy. Smart fallbacks so nothing renders blank — degrade to the next
+    // most useful real value, never to "unknown".
+    const summary =
+      input.fix?.summary ||
+      v.description ||
+      v.rule ||
+      (file ? `Fixed the flagged issue in ${file}` : "Applied an automated fix");
+    return notifySlack({
+      summary,
+      prUrl,
+      location,
+      problem: v.description,
+      rule: v.rule,
+      timeMs: input.fix?.timeMs,
+      testsPassed: input.sandbox?.passed,
+      testsTotal: input.sandbox?.total,
+      // A compact before/after so the reader gets the change in Slack.
+      change: compactChange(input.fix?.diff),
+    });
   }
 
   if (input.decision === "allow") {
-    const summary = `${ref} — ${input.fix?.why || "no real violation"}`;
-    return notifySlack({ outcome: "allow", summary, prUrl, location });
+    const summary = `${ref} — ${input.fix?.why || v.description || "no real violation"}`;
+    return notifySlack({ outcome: "allow", summary, prUrl, location, checked: v.rule });
   }
 
   // escalate
-  const summary = `${ref} — ${input.violation?.description || input.violation?.rule || "needs review"}`;
+  const summary = `${ref} — ${v.description || v.rule || (file ? `a flagged change in ${file}` : "needs review")}`;
   return notifySlack({
     outcome: "escalate",
     summary,
     prUrl,
     location,
-    change: compactChange(input.fix?.diff) || input.violation?.badCode,
+    change: compactChange(input.fix?.diff) || v.badCode,
     mention: config.slack.escalationMention,
-    rule: input.violation?.rule,
-    severity: input.severity || deriveSeverity(input.violation?.rule),
+    rule: v.rule,
+    whyCantFix: input.fix?.why,
+    severity: input.severity || deriveSeverity(v.rule),
   });
 }
 
