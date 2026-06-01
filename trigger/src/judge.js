@@ -7,6 +7,26 @@ const client = new OpenAI({
 	apiKey: process.env.NEAR_AI_API_KEY,
 });
 
+function extractVerdict(text) {
+	const starts = [];
+	for (let i = 0; i < text.length; i++) {
+		if (text[i] === "{") starts.push(i);
+	}
+	for (let i = starts.length - 1; i >= 0; i--) {
+		let depth = 0, end = -1;
+		for (let j = starts[i]; j < text.length; j++) {
+			if (text[j] === "{") depth++;
+			else if (text[j] === "}") { depth--; if (depth === 0) { end = j; break; } }
+		}
+		if (end === -1) continue;
+		try {
+			const parsed = JSON.parse(text.slice(starts[i], end + 1));
+			if (parsed.verdict) return parsed;
+		} catch { continue; }
+	}
+	return null;
+}
+
 async function judge(diff) {
 	const ruleDescriptions = await getRules();
 	const RULES = ruleDescriptions.map((r, i) => `${i + 1}. ${r}`).join("\n");
@@ -54,10 +74,11 @@ file and bad_code must be null when verdict is not violation`;
 
 	const msg = message.choices[0].message;
 	const raw = (msg.content ?? msg.reasoning_content ?? "").trim();
-	const jsonMatch = raw.match(/\{[\s\S]*\}/);
-	if (!jsonMatch) throw new Error(`No JSON found in response: ${raw.slice(0, 200)}`);
 
-	const result = JSON.parse(jsonMatch[0]);
+	// Qwen3 thinking pollutes the response with {braces} — scan every '{' from
+	// last to first and return the first candidate that parses as valid JSON with a verdict.
+	const result = extractVerdict(raw);
+	if (!result) throw new Error(`No valid verdict JSON in response: ${raw.slice(0, 200)}`);
 
 	if (!["violation", "false-alarm", "unsure"].includes(result.verdict)) {
 		throw new Error(`Unexpected verdict: ${result.verdict}`);
