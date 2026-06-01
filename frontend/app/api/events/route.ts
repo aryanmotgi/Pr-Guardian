@@ -2,9 +2,12 @@ import { subscribe } from "./bus";
 
 export const dynamic = "force-dynamic";
 
-const RENDER_EVENTS = "https://pr-guardian-fix-engine.onrender.com/events";
-
 export async function GET() {
+  // Read at request time — module-level constants are compiled by Turbopack
+  // and won't see .env.local values added after the initial build.
+  const backend     = process.env.BACKEND_URL ?? "https://pr-guardian-fix-engine.onrender.com";
+  const RENDER_EVENTS = `${backend}/events`;
+  console.log("[events-proxy] connecting to", RENDER_EVENTS);
   let unsub: (() => void) | null = null;
   let renderAbort: AbortController | null = null;
   let hbTimer: ReturnType<typeof setInterval> | null = null;

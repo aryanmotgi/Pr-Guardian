@@ -130,6 +130,10 @@ function normalizeRenderEvent(raw: Record<string, unknown>): DispatchEvent[] {
   }
 }
 
+function hasProgress(run: PRRun): boolean {
+  return STEPS.some((s) => run.steps[s].status !== "pending");
+}
+
 function reducer(state: { runs: PRRun[] }, event: DispatchEvent): { runs: PRRun[] } {
   const { runs } = state;
   const idx = runs.findIndex((r) => r.id === event.runId);
@@ -145,16 +149,28 @@ function reducer(state: { runs: PRRun[] }, event: DispatchEvent): { runs: PRRun[
       detail: event.detail,
       timestamp: new Date().toLocaleTimeString(),
     };
+    // Capture the fixed code from the sandbox fix
+    if (event.step === "fix" && event.status === "pass" && event.detail) {
+      run.fixedCode = event.detail;
+    }
+    // Count retry attempts
+    if (event.step === "retry" && event.status === "running") {
+      run.attempts = (run.attempts ?? 1) + 1;
+    }
   } else if (event.type === "decision") {
     run.decision = event.decision ?? null;
   } else if (event.type === "done") {
     run.done = true;
+    run.endedAt = new Date().toISOString();
   }
 
   if (idx === -1) {
-    // Replace any existing run for the same prNumber — one card per PR
     const existing = runs.findIndex((r) => r.prNumber === (event.prNumber ?? 1));
     if (existing !== -1) {
+      // Never wipe a run that already has steps in progress — prevents green-check resets
+      if (hasProgress(runs[existing])) {
+        return { runs: [run, ...runs].slice(0, 5) };
+      }
       const next = [...runs];
       next[existing] = run;
       return { runs: next };
@@ -165,6 +181,8 @@ function reducer(state: { runs: PRRun[] }, event: DispatchEvent): { runs: PRRun[
   next[idx] = run;
   return { runs: next };
 }
+
+const LAST_RUN_KEY = "pr_guardian_last_run";
 
 export function usePipelineEvents() {
   const [state, dispatch] = useReducer(reducer, { runs: [] });
@@ -185,6 +203,14 @@ export function usePipelineEvents() {
       setTimeout(drainNext, 80);
     }
   }, [drainNext]);
+
+  // Persist last completed run so /breakdown can read it
+  useEffect(() => {
+    const done = state.runs.find((r) => r.done);
+    if (done) {
+      try { localStorage.setItem(LAST_RUN_KEY, JSON.stringify(done)); } catch { /* quota */ }
+    }
+  }, [state.runs]);
 
   useEffect(() => {
     const es = new EventSource(ENDPOINTS.events);
@@ -215,5 +241,7 @@ export function usePipelineEvents() {
     // No runId from POST — SSE on /events will deliver job_accepted which creates the run
   }
 
-  return { runs: state.runs, trigger };
+  const lastDoneRun = state.runs.find((r) => r.done) ?? null;
+
+  return { runs: state.runs, trigger, lastDoneRun };
 }

@@ -191,10 +191,99 @@ app.post("/fix", async (req, res) => {
 	}
 });
 
+// ---- POST /demo-scenario  (scripted demo events — allow / escalate) --------
+// Fires pre-canned SSE events with realistic delays so the live screen shows
+// the full outcome without running a real sandbox. Returns 202 immediately.
+app.post("/demo-scenario", (req, res) => {
+	const { scenario, pr } = req.body || {};
+	if (!["allow", "escalate"].includes(scenario) || !pr?.number) {
+		return res.status(400).json({ error: "scenario ('allow'|'escalate') and pr.number required" });
+	}
+
+	const jobId   = randomUUID();
+	const runId   = jobId;
+	const prNum   = pr.number;
+	const prTitle = pr.title || `Demo PR #${prNum}`;
+
+	// Emits directly in frontend PipelineEvent format — bypasses normalizeRenderEvent.
+	// runId + prNumber are the identity keys the reducer uses.
+	const emit = (evt) => {
+		bus.emit("fix-event", { runId, prNumber: prNum, prTitle, ...evt });
+	};
+
+	res.status(202).json({ jobId, scenario, prNumber: prNum });
+
+	const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+	async function runAllow() {
+		emit({ type: "step", step: "trigger",  status: "pass",    message: "Webhook received — PR opened" });
+		await delay(800);
+		emit({ type: "step", step: "decide",   status: "running", message: "Reading diff and context…" });
+		await delay(2200);
+		emit({ type: "step", step: "decide",   status: "pass",    message: "HIGH confidence — Stripe test card in test file, not production code" });
+		await delay(600);
+		emit({ type: "decision", decision: "allow" });
+		await delay(400);
+		emit({ type: "step", step: "receipt",  status: "pass",    message: "Decision logged — no action required" });
+		await delay(500);
+		emit({ type: "step", step: "slack",    status: "pass",    message: "Slack notified: #security-alerts — false alarm" });
+		await delay(300);
+		emit({ type: "done" });
+	}
+
+	async function runEscalate() {
+		emit({ type: "step", step: "trigger", status: "pass",    message: "Webhook received — PR opened" });
+		await delay(800);
+		emit({ type: "step", step: "decide",  status: "running", message: "Analyzing violation…" });
+		await delay(2000);
+		emit({ type: "step", step: "decide",  status: "pass",    message: "MEDIUM confidence — hardcoded secret key, context unclear" });
+		await delay(500);
+
+		// Attempt 1
+		emit({ type: "step", step: "fix",   status: "running", message: "Attempt 1/3 — asking Claude…" });
+		await delay(3000);
+		emit({ type: "step", step: "test",  status: "running", message: "Running tests in sandbox…" });
+		await delay(2000);
+		emit({ type: "step", step: "test",  status: "fail",    message: "Tests FAILED — key rotation logic broken" });
+		await delay(600);
+		emit({ type: "step", step: "retry", status: "running", message: "Attempt 2/3 — sending failure context to Claude…" });
+
+		// Attempt 2
+		await delay(3000);
+		emit({ type: "step", step: "fix",   status: "running", message: "Attempt 2/3 — asking Claude…" });
+		await delay(2500);
+		emit({ type: "step", step: "test",  status: "running", message: "Running tests in sandbox…" });
+		await delay(2000);
+		emit({ type: "step", step: "test",  status: "fail",    message: "Tests FAILED — decryption mismatch" });
+		await delay(600);
+		emit({ type: "step", step: "retry", status: "running", message: "Attempt 3/3 — last attempt…" });
+
+		// Attempt 3
+		await delay(3000);
+		emit({ type: "step", step: "fix",   status: "running", message: "Attempt 3/3 — asking Claude…" });
+		await delay(2500);
+		emit({ type: "step", step: "test",  status: "running", message: "Running tests in sandbox…" });
+		await delay(2000);
+		emit({ type: "step", step: "test",  status: "fail",    message: "Tests FAILED — max attempts reached" });
+		await delay(600);
+		emit({ type: "step", step: "fix",   status: "fail",    message: "Could not produce a safe fix — escalating to human" });
+		await delay(400);
+		emit({ type: "decision", decision: "escalate" });
+		await delay(400);
+		emit({ type: "step", step: "slack", status: "pass",    message: "Slack ping sent — human review required" });
+		await delay(300);
+		emit({ type: "done" });
+	}
+
+	if (scenario === "allow")    runAllow().catch(console.error);
+	if (scenario === "escalate") runEscalate().catch(console.error);
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
 	console.log(`PR Guardian fix engine listening on http://localhost:${PORT}`);
 	console.log("  GET  /health");
 	console.log("  GET  /events   (SSE)");
 	console.log("  POST /fix      (SSE response)");
+	console.log("  POST /demo-scenario  (scripted allow/escalate)");
 });

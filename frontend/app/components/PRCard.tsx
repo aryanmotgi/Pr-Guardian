@@ -106,9 +106,24 @@ export function PRCard({ run, index }: { run: PRRun; index: number }) {
       </div>
 
       {run.done && (
-        <p className="text-gray-700 text-[10px] font-mono pt-1 border-t border-violet-900/20">
-          Completed · {new Date(run.startedAt).toLocaleTimeString()}
-        </p>
+        <div className="pt-2 border-t border-violet-900/20 space-y-1">
+          {run.decision && (
+            <p className={`text-xs font-medium ${
+              run.decision === "violation" ? "text-emerald-400" :
+              run.decision === "allow"     ? "text-cyan-400"    :
+              "text-amber-400"
+            }`}>
+              {run.decision === "violation"
+                ? "Violation caught and fixed automatically"
+                : run.decision === "allow"
+                ? "Recognized as safe test data — not a real leak"
+                : "Too risky to auto-merge — flagged for human review"}
+            </p>
+          )}
+          <p className="text-gray-700 text-[10px] font-mono">
+            Completed · {new Date(run.startedAt).toLocaleTimeString()}
+          </p>
+        </div>
       )}
     </div>
   );

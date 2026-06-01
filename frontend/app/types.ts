@@ -25,9 +25,12 @@ export interface PRRun {
   prTitle: string;
   branch: string;
   startedAt: string;
+  endedAt?: string;
   decision: Decision;
   steps: Record<PipelineStep, StepState>;
   done: boolean;
+  fixedCode?: string;
+  attempts?: number;
 }
 
 // Server-sent event payload

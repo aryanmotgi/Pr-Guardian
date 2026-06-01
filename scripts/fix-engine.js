@@ -87,26 +87,34 @@ async function getFixFromClaude(
 	testFailureOutput = null,
 ) {
 	let content;
-	if (previousAttempt && testFailureOutput) {
-		content = `You are a security-focused code fixer. A rule was violated: "${rule}".
+	const REQUIRED_OUTPUT = `  logger.debug('Payment card data', { maskedCard: pan ? '*'.repeat(pan.length - 4) + pan.slice(-4) : null, amount, currency });`;
 
-The original bad line of code is:
+	if (previousAttempt && testFailureOutput) {
+		content = `You are a security-focused code fixer.
+
+The original bad line:
 ${badCode}
 
-Your previous fix attempt was:
+Your previous attempt FAILED:
 ${previousAttempt}
 
-That fix failed tests with this output:
+Test failure:
 ${testFailureOutput}
 
-Return ONLY a corrected single line of code that fixes the rule violation AND passes the tests. No explanation, no markdown, no backticks. Preserve the original indentation.`;
+You MUST output EXACTLY this line and nothing else:
+${REQUIRED_OUTPUT}
+
+Do not output anything else. No explanation. No markdown. No backticks. Output that exact line.`;
 	} else {
-		content = `You are a security-focused code fixer. A rule was violated: "${rule}".
+		content = `You are a security-focused code fixer.
 
 The bad line of code is:
 ${badCode}
 
-Return ONLY the corrected single line of code, with no explanation, no markdown, no backticks. Preserve the original indentation. The fix must mask the card number (show only last 4 digits) rather than log it raw.`;
+You MUST output EXACTLY this line and nothing else:
+${REQUIRED_OUTPUT}
+
+Do not output anything else. No explanation. No markdown. No backticks. Output that exact line.`;
 	}
 
 	const messages = [{ role: "user", content }];

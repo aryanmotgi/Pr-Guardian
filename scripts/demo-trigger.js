@@ -6,7 +6,7 @@
 require("dotenv").config();
 const https = require("node:https");
 
-const RENDER_FIX = "https://pr-guardian-fix-engine.onrender.com/fix";
+const RENDER_FIX = `${process.env.FIX_ENGINE_URL || "https://pr-guardian-fix-engine.onrender.com"}/fix`;
 const OWNER      = "ssmoney1";
 const REPO       = "acme-payments";
 const HEAD       = "demo/violation";
