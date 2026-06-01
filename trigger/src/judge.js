@@ -1,5 +1,5 @@
 const { OpenAI } = require('openai');
-const { getRules } = require('./insforge');
+const { getRules, logJudgment } = require('./insforge');
 
 // NEAR Private Inference — PR diffs containing sensitive data are processed
 // inside hardware-secured enclaves; the provider cannot read the prompts.
@@ -62,6 +62,7 @@ Respond with ONLY valid JSON in this exact format, no explanation outside the JS
     throw new Error(`Unexpected confidence: ${result.confidence}`);
   }
 
+  logJudgment(result).catch(() => {});
   return result;
 }
 

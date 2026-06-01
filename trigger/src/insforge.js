@@ -23,4 +23,21 @@ async function getRules() {
   }
 }
 
-module.exports = { getRules };
+async function logJudgment(judgment) {
+  const client = getClient();
+  if (!client) return;
+  try {
+    await client.database.from('judgments').insert({
+      verdict: judgment.verdict,
+      confidence: judgment.confidence,
+      reason: judgment.reason,
+      file: judgment.file,
+      line: judgment.line,
+      model: 'Qwen/Qwen3.5-122B-A10B',
+    });
+  } catch {
+    // fire-and-forget — don't break the judgment flow if table doesn't exist
+  }
+}
+
+module.exports = { getRules, logJudgment };
