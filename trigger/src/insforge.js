@@ -96,7 +96,7 @@ async function logJudgment(judgment) {
 			reason: judgment.reason,
 			file: judgment.file,
 			line: judgment.line,
-			model: "claude-haiku-4-5-20251001",
+			model: "Qwen/Qwen3.5-122B-A10B",
 		});
 	} catch {
 		// fire-and-forget — don't block judgment flow if table doesn't exist
