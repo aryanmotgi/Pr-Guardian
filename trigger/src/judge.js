@@ -15,7 +15,8 @@ async function judge(diff) {
 		.map((f) => `--- ${f.filename} ---\n${f.patch}`)
 		.join("\n\n");
 
-	const prompt = `You are a security agent reviewing a GitHub pull request diff.
+	const prompt = `/no_think
+You are a security agent reviewing a GitHub pull request diff.
 
 RULES:
 ${RULES}
@@ -31,7 +32,6 @@ When verdict is "violation", also pinpoint exactly where the problem is:
 - "line": the line number in the NEW version of the file where the bad code is. Read the diff hunk header (e.g. "@@ -20,6 +20,7 @@" means the new block starts at line 20) and count down through the context/added lines to find it. If you cannot determine it, use null.
 - "bad_code": the exact offending line of code, copied verbatim from the diff (without the leading "+").
 
-/no_think
 Respond with ONLY valid JSON in this exact format, no explanation outside the JSON:
 {
   "verdict": "violation" | "false-alarm" | "unsure",
@@ -44,7 +44,7 @@ Respond with ONLY valid JSON in this exact format, no explanation outside the JS
 
 	const message = await client.chat.completions.create({
 		model: "Qwen/Qwen3.5-122B-A10B",
-		max_tokens: 256,
+		max_tokens: 2048,
 		messages: [{ role: "user", content: prompt }],
 	});
 
