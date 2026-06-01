@@ -35,8 +35,7 @@ async function judge(diff) {
 		.map((f) => `--- ${f.filename} ---\n${f.patch}`)
 		.join("\n\n");
 
-	const prompt = `/no_think
-You are a security agent reviewing a GitHub pull request diff.
+	const prompt = `You are a security agent reviewing a GitHub pull request diff.
 
 RULES:
 ${RULES}
@@ -69,7 +68,11 @@ file and bad_code must be null when verdict is not violation`;
 	const message = await client.chat.completions.create({
 		model: "Qwen/Qwen3.5-122B-A10B",
 		max_tokens: 2048,
-		messages: [{ role: "user", content: prompt }],
+		messages: [
+			{ role: "system", content: "You are a JSON-only security agent. Output ONLY valid JSON with no preamble, no thinking, no explanation." },
+			{ role: "user", content: prompt },
+		],
+		extra_body: { enable_thinking: false },
 	});
 
 	const msg = message.choices[0].message;
